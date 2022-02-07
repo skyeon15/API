@@ -8,16 +8,14 @@ router.get('/', function (req, res, next) {
   res.render('index', { title: '에케 API' });
 });
 
+//접속자 IP 구하기
 router.get('/ip', function (req, res) {
   let ip = requestIp.getClientIp(req);
   if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
   res.send(ip)
 });
 
-router.get('/time', function (req, res){
-  res.redirect('/time/bbforest.net')
-})
-
+//서버 시간 구하기
 router.get('/time/:url', function (req, res) {
   var url = req.params.url
   //요청 옵션
@@ -40,5 +38,10 @@ router.get('/time/:url', function (req, res) {
     })
   }).end() //전송
 });
+
+//URL 미입력시 bbforest
+router.get('/time', function (req, res){
+  res.redirect('/time/bbforest.net')
+})
 
 module.exports = router;
