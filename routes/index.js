@@ -3,7 +3,8 @@ var router = express.Router();
 var requestIp = require('request-ip');
 const { https } = require('follow-redirects');
 const time = require('../modules/time');
-const eRequest = require('../modules/eRequest');
+const EKE = require('../modules/EKE');
+const convert = require('xml-js');
 
 /* GET home page. */
 router.get('/', function (req, res, next) {
@@ -21,7 +22,7 @@ router.get('/ip', function (req, res) {
 router.get('/time/:url', function (req, res) {
   var url = req.params.url
   var send = new Date().getTime()
-  eRequest.eRequest('GET', url, function (data, headers) {
+  EKE.eRequest('GET', url, function (data, headers) {
     res.status(200).json({
       "url": url,
       "abbreviation": "KST",
@@ -44,7 +45,7 @@ router.get('/time', function (req, res) {
 router.get('/school-lunch/:name', function (req, res) {
   //학교 정보 확인 구간
   var name, education, school
-  eRequest.eRequest('GET', 'https://open.neis.go.kr/hub/schoolInfo?Type=json&SCHUL_NM=' + req.params.name, function (data) {
+  EKE.eRequest('GET', 'https://open.neis.go.kr/hub/schoolInfo?Type=json&SCHUL_NM=' + req.params.name, function (data) {
     var json = JSON.parse(data)
     if (json.schoolInfo) {
       name = json.schoolInfo[1].row[0].SCHUL_NM //학교이름
@@ -61,7 +62,7 @@ router.get('/school-lunch/:name', function (req, res) {
     }
 
     //급식 정보 확인 구간
-    eRequest.eRequest('GET', 'https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE='
+    EKE.eRequest('GET', 'https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE='
       + education + '&SD_SCHUL_CODE=' + school + '&MLSV_YMD=' + time.format("YYMMDD"),
       function (data) {
         json = JSON.parse(data)
@@ -117,17 +118,33 @@ router.get('/school-lunch/:name', function (req, res) {
 
 //코로나 정보
 router.get('/covid19', function (req, res) {
-  https.request({
-    method: 'GET',
-    host: '',
-    path: ''
-  }, function (ress) {
-    var data
-    ress.on('data', function (chunk) {
-      data += chunk
-    })
-    ress.on('end', function () {
-      //fggfdfdg
+  //백신 접종자
+  EKE.eRequest('GET', 'https://nip.kdca.go.kr/irgd/cov19stats.do', function (data) {
+    data = convert.xml2json(data, {compact: true})
+    var vac = JSON.parse(data).response.body.items.item
+    
+    //실시간 확진자
+    EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/live.json', function(data){
+      var live = JSON.parse(data).live.today
+
+      //누적 확진자
+      EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/stat.json', function(data){
+        var sum = JSON.parse(data).overview
+
+        //반환
+        res.send(`국내 코로나 현황<br>실시간 : ${live.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}명<br>
+        <br>
+        직전 발표자료<br>
+        누적 확진자 : ${sum.confirmed[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.confirmed[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
+        위중증환자 : ${sum.confirmedSevereSymptoms[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.confirmedSevereSymptoms[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
+        격리해제 : ${sum.recovered[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.recovered[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
+        사망자 : ${sum.deceased[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.deceased[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
+        <br>
+        백신 접종 수<br>
+        1차 ${vac[2].firstCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${vac[0].firstCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
+        2차 ${vac[2].secondCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${vac[0].secondCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
+        3차 ${vac[2].thirdCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${vac[0].thirdCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})`)
+      })
     })
   })
 })
