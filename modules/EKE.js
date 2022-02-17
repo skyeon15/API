@@ -35,12 +35,4 @@ function eRequest(method, url, callback) {
   }).end()
 }
 
-function file(tag) {
-  var fs = require('fs');
-  fs.readFile('sample.txt', 'utf8', function (err, data) {
-    console.log(data);
-  });
-}
-
 module.exports.eRequest = eRequest;
-module.exports.file = file;

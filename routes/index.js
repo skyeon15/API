@@ -54,9 +54,9 @@ router.get('/school-lunch/:name', function (req, res) {
     }
     else {
       res.status(200).json({
-        "STATUS": "오류-학교이름",
-        "NAME": req.params.name,
-        "DATE": time.format("YYMMDD")
+        STATUS: "오류-학교이름",
+        NAME: req.params.name,
+        DATE: time.format("YYMMDD")
       })
       return
     }
@@ -98,17 +98,17 @@ router.get('/school-lunch/:name', function (req, res) {
 
           //JSON 반환
           res.status(200).json({
-            "STATUS": "정상",
-            "NAME": name,
-            "DATE": time.format("YYMMDD"),
-            "meals": meal
+            STATUS: "정상",
+            NAME: name,
+            DATE: time.format("YYMMDD"),
+            MEALS: meal
           })
           return
         } else {
           res.status(200).json({
-            "STATUS": "오류-급식없음",
-            "NAME": name,
-            "DATE": time.format("YYMMDD")
+            STATUS: "오류-급식없음",
+            NAME: name,
+            DATE: time.format("YYMMDD")
           })
           return
         }
@@ -116,37 +116,107 @@ router.get('/school-lunch/:name', function (req, res) {
   })
 })
 
+var fs = require('fs')
+var covid19 = JSON.parse(fs.readFileSync('./data/covid19.json'))
+
 //코로나 정보
 router.get('/covid19', function (req, res) {
-  //백신 접종자
-  EKE.eRequest('GET', 'https://nip.kdca.go.kr/irgd/cov19stats.do', function (data) {
-    data = convert.xml2json(data, {compact: true})
-    var vac = JSON.parse(data).response.body.items.item
+  if (covid19.time + (60000 * 5) > new Date().getTime()) {
     
+    if (req.query.type == "text") {
+      var result = `국내 코로나 현황[br]
+      실시간 : ${covid19.live.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}명[br]
+      [br]
+      직전 발표자료[br]
+      누적 확진자 : ${covid19.confirmed[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.confirmed[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+      위중증환자 : ${covid19.severeSymptoms[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.severeSymptoms[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+      격리해제 : ${covid19.recovered[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.recovered[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+      사망자 : ${covid19.deceased[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.deceased[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+      [br]
+      백신 접종 수[br]
+      1차 ${covid19.vac1[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac1[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+      2차 ${covid19.vac2[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac2[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+      3차 ${covid19.vac3[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac3[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})`
+
+      //반환
+      res.send(result.replace(/  +/g, ""))
+
+    } else {
+      res.send(covid19)
+    }
+  } else {
     //실시간 확진자
-    EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/live.json', function(data){
+    EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/live.json', function (data) {
       var live = JSON.parse(data).live.today
 
-      //누적 확진자
-      EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/stat.json', function(data){
-        var sum = JSON.parse(data).overview
+      //백신 접종자
+      EKE.eRequest('GET', 'https://nip.kdca.go.kr/irgd/cov19stats.do', function (data) {
+        data = convert.xml2json(data, { compact: true })
+        var vac = JSON.parse(data).response.body.items.item
 
-        //반환
-        res.send(`국내 코로나 현황<br>실시간 : ${live.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}명<br>
-        <br>
-        직전 발표자료<br>
-        누적 확진자 : ${sum.confirmed[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.confirmed[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
-        위중증환자 : ${sum.confirmedSevereSymptoms[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.confirmedSevereSymptoms[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
-        격리해제 : ${sum.recovered[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.recovered[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
-        사망자 : ${sum.deceased[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${sum.deceased[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
-        <br>
-        백신 접종 수<br>
-        1차 ${vac[2].firstCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${vac[0].firstCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
-        2차 ${vac[2].secondCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${vac[0].secondCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})<br>
-        3차 ${vac[2].thirdCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${vac[0].thirdCnt._text.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})`)
+        //누적 확진자
+        EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/stat.json', function (data) {
+          var sum = JSON.parse(data).overview
+
+          var save = {
+            time: new Date().getTime(),
+            live: live,
+            confirmed: [
+              sum.confirmed[0], sum.confirmed[1]
+            ],
+            severeSymptoms: [
+              sum.confirmedSevereSymptoms[0], sum.confirmedSevereSymptoms[1]
+            ],
+            recovered: [
+              sum.recovered[0], sum.recovered[1]
+            ],
+            deceased: [
+              sum.deceased[0], sum.deceased[1]
+            ],
+            vac1: [
+              vac[2].firstCnt._text * 1, vac[0].firstCnt._text * 1
+            ],
+            vac2: [
+              vac[2].secondCnt._text * 1, vac[0].secondCnt._text * 1
+            ],
+            vac3: [
+              vac[2].thirdCnt._text * 1, vac[0].thirdCnt._text * 1
+            ]
+          }
+          covid19 = save
+          fs.writeFileSync('./data/covid19.json', JSON.stringify(covid19))
+
+          if (req.query.type == "text") {
+            var result = `국내 코로나 현황[br]
+            실시간 : ${covid19.live.replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}명[br]
+            [br]
+            직전 발표자료[br]
+            누적 확진자 : ${covid19.confirmed[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.confirmed[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+            위중증환자 : ${covid19.severeSymptoms[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.severeSymptoms[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+            격리해제 : ${covid19.recovered[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.recovered[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+            사망자 : ${covid19.deceased[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.deceased[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+            [br]
+            백신 접종 수[br]
+            1차 ${covid19.vac1[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac1[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+            2차 ${covid19.vac2[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac2[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+            3차 ${covid19.vac3[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac3[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})`
+
+            //반환
+            res.send(result.replace(/  +/g, ""))
+          } else {
+            res.send(covid19)
+          }
+        })
       })
     })
-  })
+  }
+})
+
+router.get('/test', function(req, res){
+  EKE.eRequest('GET', 'https://nip.kdca.go.kr/irgd/cov19stats.do', function (data) {
+    data = convert.xml2json(data, { compact: true })
+    res.send(data)
+})
 })
 
 module.exports = router;
