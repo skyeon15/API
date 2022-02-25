@@ -5,6 +5,7 @@ const { https } = require('follow-redirects');
 const time = require('../modules/time');
 const EKE = require('../modules/EKE');
 const convert = require('xml-js');
+var Crawler = require("crawler");
 
 /* GET home page. */
 router.get('/', function (req, res, next) {
@@ -170,25 +171,35 @@ router.get('/covid19', function (req, res) {
         })
       })
     })
-  }else{
+  } else {
     resReturn()
   }
   function resReturn() {
     //반환
     if (req.query.type == "text") {
+      function dot(todot, compare = false) {
+        var check = Math.sign(todot)
+        if (check == -1 && compare) {
+          return todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
+        } else if(compare) {
+          return '+' + todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
+        }
+        return todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
+      }
+
       var result = `국내 코로나 현황[br]
-      실시간 : ${covid19.live.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}명[br]
+      실시간 : ${dot(covid19.live)}명[br]
       [br]
       직전 발표자료[br]
-      누적 확진자 : ${covid19.confirmed[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.confirmed[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
-      위중증환자 : ${covid19.severeSymptoms[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.severeSymptoms[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
-      격리해제 : ${covid19.recovered[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.recovered[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
-      사망자 : ${covid19.deceased[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.deceased[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
+      누적 확진자 : ${dot(covid19.confirmed[0])}(${dot(covid19.confirmed[1], true)})[br]
+      위중증환자 : ${dot(covid19.severeSymptoms[0])}(${dot(covid19.severeSymptoms[1], true)})[br]
+      격리해제 : ${dot(covid19.recovered[0])}(${dot(covid19.recovered[1], true)})[br]
+      사망자 : ${dot(covid19.deceased[0])}(${dot(covid19.deceased[1], true)})[br]
       [br]
       백신 접종 수[br]
-      1차 ${covid19.vac1[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac1[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
-      2차 ${covid19.vac2[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac2[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})[br]
-      3차 ${covid19.vac3[0].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")}(+${covid19.vac3[1].toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")})`
+      1차 ${dot(covid19.vac1[0])}(${dot(covid19.vac1[1], true)})[br]
+      2차 ${dot(covid19.vac2[0])}(${dot(covid19.vac2[1], true)})[br]
+      3차 ${dot(covid19.vac3[0])}(${dot(covid19.vac3[1], true)})`
 
       res.send(result.replace(/  +/g, ""))
 
@@ -198,11 +209,134 @@ router.get('/covid19', function (req, res) {
   }
 })
 
-router.get('/test', function (req, res) {
-  EKE.eRequest('GET', 'https://nip.kdca.go.kr/irgd/cov19stats.do', function (data) {
-    data = convert.xml2json(data, { compact: true })
-    res.send(data)
+//네이버 날씨
+router.get('/weather', function (req, res) {
+  var c = new Crawler({
+    maxConnections: 10,
+    callback: function (error, ress, done) {
+      if (error) {
+        res.send(error)
+      } else {
+        var $ = ress.$;
+
+        //위치
+        var city = $("div.title_area > div > span").text()
+        //날씨
+        var weather = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > p > span.weather.before_slash").text()
+        //현재온도
+        var temp = $("div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.weather_graphic > div.temperature_text > strong").text().replace('현재 온도', '');
+        //최고온도
+        var temp_low = $("div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.lowest").text().replace('최저기온', '');
+        //최저온도
+        var temp_high = $("div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.highest").text().replace('최고기온', '');
+        //미세먼지
+        var pm = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(1) > a > span").text()
+        //초미세먼지
+        var pm_m = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(2) > a > span").text()
+        //자외선
+        var ultraviolet = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.level1 > a > span").text()
+        //일몰
+        var sunset = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.type_sun > a > span").text()
+        
+        //요약
+        var summary = $("#ct > section.sc.csm.cs_weather_new._cs_weather > div > div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > dl").text().trim().split(' ')
+        //강수확률
+        var precipitation = summary[1]
+        //습도
+        var humidity = summary[3]
+        //바람
+        var wind = [ summary[4], summary[5] ]
+        //.replace('바람(', '').replace(')', '')
+
+        if (city == '') {
+          res.send('에러')
+        } else {
+          if (req.query.type == 'text') {
+            var result = `${city.replace(city.split(' ')[0], '')}의 현재 날씨는 ${weather}![br]
+            [br]
+            기온 : ${temp}(최저 ${temp_low}/최고 ${temp_high})[br]
+            바람 : ${wind[0]} ${wind[1]}[br]
+            일몰시간 : ${sunset}[br]
+            강수확률 : ${precipitation}[br]
+            습도 : ${humidity}[br]
+            (초)미세먼지 : ${pm_m}, ${pm}[br]
+            자외선 : ${ultraviolet}`
+            res.send(result.replace(/  +/g, ""))
+          } else {
+            res.send({
+              city: city,
+              weather: weather,
+              temp: temp,
+              temp_low: temp_low,
+              temp_high: temp_high,
+              precipitation: precipitation,
+              humidity: humidity,
+              pm: pm,
+              pm_m: pm_m,
+              ultraviolet: ultraviolet,
+              sunset: sunset,
+              wind: wind
+            })
+          }
+        }
+      }
+      done()
+    }
   })
+  
+  if (req.query.city == undefined) {
+    res.send('사용법: ?city=<지역명>&type=[json, text]')
+  } else {
+    c.queue(encodeURI('https://m.search.naver.com/search.naver?query=날씨+' + req.query.city))
+  }
+})
+
+
+// var fs = require('fs')
+// var olympic = JSON.parse(fs.readFileSync('./data/olympic.json'))
+
+// olympic = result
+
+// fs.writeFileSync('./data/olympic.json', JSON.stringify(olympic))
+
+//올림픽 메달
+router.get('/olympic', function (req, res) {
+  var c = new Crawler({
+    maxConnections: 10,
+    callback: function (error, ress, done) {
+      if (error) {
+        res.send(error)
+      } else {
+        var $ = ress.$;
+
+        //올림픽 이름
+        var name = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > h2 > span.area_text_title > strong").text();
+        //올림픽 우리나라 순위
+        var grade = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > span").text();
+        //우리나라 금메달 갯수
+        var gold = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.gold").text().replace(/[^0-9]/g, '');
+        //우리나라 은메달 갯수
+        var silver = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.silver").text().replace(/[^0-9]/g, '');
+        //우리나라 동메달 갯수
+        var bronze = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.bronze").text().replace(/[^0-9]/g, '');
+
+        if (name == '') {
+          res.send('에러')
+        } else {
+          res.send({
+            name: name,
+            grade: grade,
+            gold: gold,
+            silver: silver,
+            bronze: bronze
+          })
+        }
+      }
+      done()
+    }
+  })
+
+  c.queue(encodeURI('https://m.search.naver.com/search.naver?query=올림픽'))
 })
 
 module.exports = router;
