@@ -5,7 +5,7 @@ const { https } = require('follow-redirects');
 const time = require('../modules/time');
 const EKE = require('../modules/EKE');
 const convert = require('xml-js');
-var Crawler = require("crawler");
+const cheerio = require('cheerio');
 
 /* GET home page. */
 router.get('/', function (req, res, next) {
@@ -137,20 +137,27 @@ router.get('/covid19', function (req, res) {
         EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/stat.json', function (data) {
           var sum = JSON.parse(data).overview
 
+          //12시 지나서 발표자료가 없으면 직전 자료로 대체
+          if (sum.confirmed[1] == 0) {
+            var last = [covid19.confirmed[1], covid19.critical[1], covid19.hospital[1], covid19.deceased[1]]
+          } else {
+            var last = [sum.confirmed[1], sum.confirmedCritical[1], sum.hospitalised[1], sum.deceased[1]]
+          }
+
           var result = {
             time: new Date().getTime(),
             live: live,
             confirmed: [
-              sum.confirmed[0], sum.confirmed[1]
+              sum.confirmed[0], last[0]
             ],
-            severeSymptoms: [
-              sum.confirmedSevereSymptoms[0], sum.confirmedSevereSymptoms[1]
+            critical: [
+              sum.confirmedCritical[0], last[1]
             ],
-            recovered: [
-              sum.recovered[0], sum.recovered[1]
+            hospital: [
+              sum.hospitalised[0], last[2]
             ],
             deceased: [
-              sum.deceased[0], sum.deceased[1]
+              sum.deceased[0], last[3]
             ],
             vac1: [
               vac[2].firstCnt._text * 1, vac[0].firstCnt._text * 1
@@ -181,19 +188,19 @@ router.get('/covid19', function (req, res) {
         var check = Math.sign(todot)
         if (check == -1 && compare) {
           return todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
-        } else if(compare) {
+        } else if (compare) {
           return '+' + todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
         }
         return todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
       }
 
-      var result = `국내 코로나 현황[br]
+      var result = `[ 국내 코로나 현황 ][br]
       실시간 : ${dot(covid19.live)}명[br]
       [br]
       직전 발표자료[br]
       누적 확진자 : ${dot(covid19.confirmed[0])}(${dot(covid19.confirmed[1], true)})[br]
-      위중증환자 : ${dot(covid19.severeSymptoms[0])}(${dot(covid19.severeSymptoms[1], true)})[br]
-      격리해제 : ${dot(covid19.recovered[0])}(${dot(covid19.recovered[1], true)})[br]
+      위중증 : ${dot(covid19.critical[0])}(${dot(covid19.critical[1], true)})[br]
+      신규입원 : ${dot(covid19.hospital[0])}(${dot(covid19.hospital[1], true)})[br]
       사망자 : ${dot(covid19.deceased[0])}(${dot(covid19.deceased[1], true)})[br]
       [br]
       백신 접종 수[br]
@@ -211,48 +218,53 @@ router.get('/covid19', function (req, res) {
 
 //네이버 날씨
 router.get('/weather', function (req, res) {
-  var c = new Crawler({
-    maxConnections: 10,
-    callback: function (error, ress, done) {
-      if (error) {
-        res.send(error)
-      } else {
-        var $ = ress.$;
+  //지역이 입력되지 않으면
+  if (req.query.city == undefined) {
+    res.send('사용법: ?city=<지역명>&type=[json, text]')
+    return
+  }
 
-        //위치
-        var city = $("div.title_area > div > span").text()
-        //날씨
-        var weather = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > p > span.weather.before_slash").text()
-        //현재온도
-        var temp = $("div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.weather_graphic > div.temperature_text > strong").text().replace('현재 온도', '');
-        //최고온도
-        var temp_low = $("div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.lowest").text().replace('최저기온', '');
-        //최저온도
-        var temp_high = $("div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.highest").text().replace('최고기온', '');
-        //미세먼지
-        var pm = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(1) > a > span").text()
-        //초미세먼지
-        var pm_m = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(2) > a > span").text()
-        //자외선
-        var ultraviolet = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.level1 > a > span").text()
-        //일몰
-        var sunset = $("div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.type_sun > a > span").text()
-        
-        //요약
-        var summary = $("#ct > section.sc.csm.cs_weather_new._cs_weather > div > div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > dl").text().trim().split(' ')
-        //강수확률
-        var precipitation = summary[1]
-        //습도
-        var humidity = summary[3]
-        //바람
-        var wind = [ summary[4], summary[5] ]
-        //.replace('바람(', '').replace(')', '')
+  EKE.eRequest('GET', 'https://m.search.naver.com/search.naver?query=날씨+' + req.query.city, function (data) {
+    var s = cheerio.load(data)
 
-        if (city == '') {
-          res.send('에러')
-        } else {
-          if (req.query.type == 'text') {
-            var result = `${city.replace(city.split(' ')[0], '')}의 현재 날씨는 ${weather}![br]
+    //위치
+    var city = s('div.title_area > div > span').text()
+    //날씨
+    var weather = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > p > span.weather.before_slash').text()
+    //현재온도
+    var temp = s('div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.weather_graphic > div.temperature_text > strong').text().replace('현재 온도', '');
+    //최고온도
+    var temp_low = s('div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.lowest').text().replace('최저기온', '');
+    //최저온도
+    var temp_high = s('div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.highest').text().replace('최고기온', '');
+    //미세먼지
+    var pm = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(1) > a > span').text()
+    //초미세먼지
+    var pm_m = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(2) > a > span').text()
+    //자외선
+    var ultraviolet = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.level1 > a > span').text()
+    //일몰
+    var sunset = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.type_sun > a > span').text()
+
+    //지역을 못 받아오면
+    if (city != '') {
+      //요약
+      var summary = s('#ct > section.sc.csm.cs_weather_new._cs_weather > div > div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > dl').text().trim().split(' ')
+      //강수확률
+      var precipitation = summary[1]
+      //습도
+      var humidity = summary[3]
+      //바람
+      var wind = [summary[4].toString().replace('바람(', '').replace(')', ''), summary[5]]
+    }
+
+    if (req.query.type == 'text') {
+      if (city == '') {
+        res.send('위치 정보를 찾을 수 없어요.')
+        return
+      }
+
+      var result = `[ ${city.replace(city.split(' ')[0], '')}의 현재 날씨는 ${weather}! ][br]
             [br]
             기온 : ${temp}(최저 ${temp_low}/최고 ${temp_high})[br]
             바람 : ${wind[0]} ${wind[1]}[br]
@@ -261,36 +273,25 @@ router.get('/weather', function (req, res) {
             습도 : ${humidity}[br]
             (초)미세먼지 : ${pm_m}, ${pm}[br]
             자외선 : ${ultraviolet}`
-            res.send(result.replace(/  +/g, ""))
-          } else {
-            res.send({
-              city: city,
-              weather: weather,
-              temp: temp,
-              temp_low: temp_low,
-              temp_high: temp_high,
-              precipitation: precipitation,
-              humidity: humidity,
-              pm: pm,
-              pm_m: pm_m,
-              ultraviolet: ultraviolet,
-              sunset: sunset,
-              wind: wind
-            })
-          }
-        }
-      }
-      done()
+      res.send(result.replace(/  +/g, ""))
+    } else {
+      res.send({
+        city: city,
+        weather: weather,
+        temp: temp,
+        temp_low: temp_low,
+        temp_high: temp_high,
+        precipitation: precipitation,
+        humidity: humidity,
+        pm: pm,
+        pm_m: pm_m,
+        ultraviolet: ultraviolet,
+        sunset: sunset,
+        wind: wind
+      })
     }
   })
-  
-  if (req.query.city == undefined) {
-    res.send('사용법: ?city=<지역명>&type=[json, text]')
-  } else {
-    c.queue(encodeURI('https://m.search.naver.com/search.naver?query=날씨+' + req.query.city))
-  }
 })
-
 
 // var fs = require('fs')
 // var olympic = JSON.parse(fs.readFileSync('./data/olympic.json'))
@@ -301,42 +302,101 @@ router.get('/weather', function (req, res) {
 
 //올림픽 메달
 router.get('/olympic', function (req, res) {
-  var c = new Crawler({
-    maxConnections: 10,
-    callback: function (error, ress, done) {
-      if (error) {
-        res.send(error)
-      } else {
-        var $ = ress.$;
+  EKE.eRequest('GET', 'https://m.search.naver.com/search.naver?query=올림픽', function (data) {
+    var s = cheerio.load(data)
 
-        //올림픽 이름
-        var name = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > h2 > span.area_text_title > strong").text();
-        //올림픽 우리나라 순위
-        var grade = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > span").text();
-        //우리나라 금메달 갯수
-        var gold = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.gold").text().replace(/[^0-9]/g, '');
-        //우리나라 은메달 갯수
-        var silver = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.silver").text().replace(/[^0-9]/g, '');
-        //우리나라 동메달 갯수
-        var bronze = $("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.bronze").text().replace(/[^0-9]/g, '');
+    //올림픽 이름
+    var name = s("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > h2 > span.area_text_title > strong").text();
+    //올림픽 우리나라 순위
+    var grade = s("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > span").text();
+    //우리나라 금메달 갯수
+    var gold = s("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.gold").text().replace(/[^0-9]/g, '');
+    //우리나라 은메달 갯수
+    var silver = s("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.silver").text().replace(/[^0-9]/g, '');
+    //우리나라 동메달 갯수
+    var bronze = s("#ct > section.sc.mcs_common_module.case_normal.color_7._olympic > div > div.sticky_wrap._sticky_wrap > div > div.title_area._title_area > div > div > span.ico_medal.bronze").text().replace(/[^0-9]/g, '');
 
-        if (name == '') {
-          res.send('에러')
-        } else {
-          res.send({
-            name: name,
-            grade: grade,
-            gold: gold,
-            silver: silver,
-            bronze: bronze
-          })
-        }
-      }
-      done()
+    if (name == '') {
+      res.send('에러')
+    } else {
+      res.send({
+        name: name,
+        grade: grade,
+        gold: gold,
+        silver: silver,
+        bronze: bronze
+      })
     }
   })
+})
 
-  c.queue(encodeURI('https://m.search.naver.com/search.naver?query=올림픽'))
+//로스트아크 캐릭터
+router.get('/lostark', function (req, res) {
+  EKE.eRequest('GET', 'https://lostark.game.onstove.com/Profile/Character/' + req.query.nickname, function (data) {
+    var s = cheerio.load(data)
+
+    //닉네임
+    var name = s('#lostark-wrapper > div > main > div > div.profile-character-info > span.profile-character-info__name').text()
+    //서버
+    var server = s('#lostark-wrapper > div > main > div > div.profile-character-info > span.profile-character-info__server').text().replace('@', '')
+    //레벨
+    var level = s('#lostark-wrapper > div > main > div > div.profile-character-info > span.profile-character-info__lv').text().replace('Lv.', '')
+    //원정대 레벨
+    var lever_expedition = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info > div.level-info__expedition > span').text().replace('원정대 레벨Lv.', '')
+    //전투 레벨
+    var level_fight = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info > div.level-info__item > span:nth-child(2)').text().replace('Lv.', '')
+    //장착 아이템 레벨
+    var level_item = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info2 > div.level-info2__expedition > span:nth-child(2)').text().replace('Lv.', '')
+    //달성 아이템 레벨
+    var level_item2 = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info2 > div.level-info2__item > span:nth-child(2)').text().replace('Lv.', '')
+
+    //칭호
+    var title = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__title > span:nth-child(2)').text()
+    //길드
+    var guild = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__guild > span:nth-child(2)').text()
+    //PVP
+    var pvp = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.level-info__pvp > span:nth-child(2)').text()
+    //영지
+    var wisdom = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__wisdom > span:nth-child(3)').text()
+    var wisdom_level = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__wisdom > span:nth-child(2)').text().replace('Lv.', '')
+
+    if (req.query.type == 'text') {
+      if (name == '') {
+        res.send('캐릭터 정보를 찾을 수 없어요.')
+        return
+      }
+
+      var result = `[ ${name}의 로스트아크 ][br]
+                    Lv.${level}[br]
+                    서버 : ${server}[br]
+                    PVP : ${pvp}[br]
+                    칭호 : ${title}[br]
+                    길드 : ${guild}[br]
+                    영지 : ${wisdom} (Lv.${wisdom_level})[br]
+                    [br]
+                    레벨 정보[br]
+                    원정대 : ${lever_expedition}[br]
+                    전투 : ${level_fight}[br]
+                    장착 아이템 : ${level_item}[br]
+                    달성 아이템 : ${level_item2}`
+      res.send(result.replace(/  +/g, ""))
+    } else {
+      res.send({
+        name: name,
+        server: server,
+        level: level,
+        lever_expedition: lever_expedition,
+        level_fight: level_fight,
+        level_item: level_item,
+        level_item2: level_item2,
+        title: title,
+        guild: guild,
+        pvp: pvp,
+        wisdom: wisdom,
+        wisdom_level: wisdom_level
+      })
+    }
+  })
 })
 
 module.exports = router;
