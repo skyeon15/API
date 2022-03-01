@@ -3,3 +3,15 @@ extends layout
 block content
   h1= title
   p Welcome to #{title}
+
+  script.
+    (function (url) {
+      var image = new Image();
+
+      image.onload = function (event) {
+        var style = ['font-size: 1px;', 'line-height: ' + image.height + 'px;', 'padding: 0px ' + image.width * 0.5 + 'px;', 'background-size: ' + image.width + 'px ' + image.height + 'px;', 'background: url(' + url + ');'].join(' ');
+        console.log('%c ', style);
+      };
+
+      image.src = url;
+    })('https://api.bbforest.net/log.png');
