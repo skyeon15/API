@@ -288,7 +288,6 @@
      }
    }
  
-
    let host = req.hostname
 
    // client data => agent
