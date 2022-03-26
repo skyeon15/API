@@ -6,12 +6,17 @@ const time = require('../modules/time');
 const EKE = require('../modules/EKE');
 const convert = require('xml-js');
 const cheerio = require('cheerio');
+const fs = require('fs');
 
 /* GET home page. */
 router.get('/', function (req, res, next) {
   res.status(200).render('index', { title: '에케 API' });
 });
-//
+
+router.get('/news', function (req, res, next) {
+  res.status(200).render('news', { title: '에케 API' });
+});
+
 //접속자 IP 구하기
 router.get('/ip', function (req, res) {
   let ip = requestIp.getClientIp(req);
@@ -117,7 +122,6 @@ router.get('/school-lunch/:name', function (req, res) {
   })
 })
 
-var fs = require('fs')
 var covid19 = JSON.parse(fs.readFileSync('./data/covid19.json'))
 
 //코로나 정보
