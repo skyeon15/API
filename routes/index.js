@@ -403,4 +403,17 @@ router.get('/lostark', function (req, res) {
   })
 })
 
+router.get('/redirect*', function (req, res, next) {
+  var url = req.originalUrl.substring(10)
+
+  if(url.startsWith('http')){
+    res.redirect(url)
+  }else{
+    res.send(`URL이 올바르지 않습니다. http:// 또는 https://가 포함되어야 합니다.<br>
+    사용법 : api.bbforest.net/redirect/이동할주소<br>
+    입력된URL : api.bbforest.net/redirect/${url}<br>
+    파란대나무숲. BlueBambooForest. By.에케(@skyeon15)`)
+  }
+});
+
 module.exports = router;
