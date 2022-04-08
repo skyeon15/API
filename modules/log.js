@@ -157,7 +157,7 @@
    source: 'EKE',
    title: 'EKE',
    color: '\u001B[38;2;' + 255 + ';' + 255 + ';' + 255 + 'm',
-   dir: '/home/ubuntu/api/data/logs',
+   dir: 'data/logs',
    type: {
      info: {
        console: '',
@@ -209,7 +209,7 @@
    source: 'EKE',
    title: 'EKE',
    color: '\u001B[38;2;' + 255 + ';' + 255 + ';' + 255 + 'm',
-   dir: '/home/ubuntu/api/data/logs',
+   dir: 'data/logs',
    type: {
      info: {
        console: '',

@@ -10,6 +10,10 @@ router.get('/*', function (req, res) {
     let id
 
     try {
+        //타임코드 제거
+        if(url.indexOf('?') != -1){
+            url = url.split('?')[0]
+        }
         //유튜브 ID 얻기
         id = ytdl.getVideoID(url)
     } catch (error) {
@@ -29,7 +33,7 @@ router.get('/*', function (req, res) {
                 quality: 'highest'
             }).on('error', function (error) {
                 //오류 발생시 반환
-                res.error(404, error.message)
+                res.status(404).send(error.message)
                 console.log(error.message)
                 return
             })
