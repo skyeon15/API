@@ -7,6 +7,13 @@ const ytdl = require('ytdl-core');
 router.get('/*', function (req, res) {
     var url = req.originalUrl.substring(4)
 
+    if(url == ''){
+        res.send({
+            message: '아무것도 없어요.'
+        })
+        return
+    }
+
     let id
 
     try {
@@ -17,7 +24,10 @@ router.get('/*', function (req, res) {
         //유튜브 ID 얻기
         id = ytdl.getVideoID(url)
     } catch (error) {
-        console.log('ID error: ' + url)
+        console.log(error.toString())
+        res.send({
+            message: error.toString()
+        })
         return
     }
 
@@ -50,6 +60,11 @@ router.get('/*', function (req, res) {
             //출력
             respipe.pipe(res)
         }
+    }else{
+        res.send({
+            message: '유튜브 영상이 아닙니다.'
+        })
+        return
     }
 })
 
