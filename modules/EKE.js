@@ -29,6 +29,9 @@ function eRequest(method, url, callback) {
     ress.on('data', function (chunk) {
       data += chunk
     })
+    ress.on('error', function(error){
+      console.log(error)
+    })
     ress.on('end', function () {
       callback(data, ress.headers)
     })

@@ -7,10 +7,12 @@ const EKE = require('../modules/EKE');
 const convert = require('xml-js');
 const cheerio = require('cheerio');
 const fs = require('fs');
+const { default: axios } = require('axios');
 
 /* GET home page. */
 router.get('/', function (req, res, next) {
-  res.status(200).render('index', { title: '에케 API' });
+  // res.status(200).render('index', { title: '에케 API' });
+  res.redirect("https://docs.api.bbforest.net")
 });
 
 router.get('/news', function (req, res, next) {
@@ -30,6 +32,7 @@ router.get('/time/:url', function (req, res) {
   var send = new Date().getTime()
   EKE.eRequest('GET', url, function (data, headers) {
     res.status(200).json({
+      status: "정상",
       "url": url,
       "abbreviation": "KST",
       "timezone": "Asia/Seoul",
@@ -128,60 +131,50 @@ var covid19 = JSON.parse(fs.readFileSync('./data/covid19.json'))
 router.get('/covid19', function (req, res) {
   //5분에 한 번 캐시
   if (covid19.time + (60000 * 5) < new Date().getTime()) {
-    //실시간 확진자
-    EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/live.json', function (data) {
-      var live = JSON.parse(data).live.today
+    // 데이터 파싱
+    axios.get('https://coronaboard.kr/generated/KR.json')
+      .then(function (res) {
+        var length = res.data.date.length - 1
+        var data = res.data
 
-      //백신 접종자
-      EKE.eRequest('GET', 'https://nip.kdca.go.kr/irgd/cov19stats.do', function (data) {
-        data = convert.xml2json(data, { compact: true })
-        var vac = JSON.parse(data).response.body.items.item
+        //12시 지나서 발표자료가 없으면 직전 자료로 대체
+        if (data.confirmed[length] == 0) {
+          var last = [covid19.confirmed[1], covid19.critical[1], covid19.deceased[1]]
+        } else {
+          var last = [data.confirmed[length], data.critical[length], data.death[length]]
+        }
 
-        //누적 확진자
-        EKE.eRequest('GET', 'https://apiv3.corona-live.com/domestic/stat.json', function (data) {
-          var sum = JSON.parse(data).overview
+        var result = {
+          time: new Date().getTime(),
+          confirmed: [
+            data.confirmed_acc[length], last[0]
+          ],
+          critical: [
+            data.critical_acc[length], last[1]
+          ],
+          deceased: [
+            data.death_acc[length], last[2]
+          ],
+          // 백신 API 확인 중
+          // vac1: [
+          //   vac[2].firstCnt._text * 1, vac[0].firstCnt._text * 1
+          // ],
+          // vac2: [
+          //   vac[2].secondCnt._text * 1, vac[0].secondCnt._text * 1
+          // ],
+          // vac3: [
+          //   vac[2].thirdCnt._text * 1, vac[0].thirdCnt._text * 1
+          // ]
+        }
 
-          //12시 지나서 발표자료가 없으면 직전 자료로 대체
-          if (sum.confirmed[1] == 0) {
-            var last = [covid19.confirmed[1], covid19.critical[1], covid19.hospital[1], covid19.deceased[1]]
-          } else {
-            var last = [sum.confirmed[1], sum.confirmedCritical[1], sum.hospitalised[1], sum.deceased[1]]
-          }
+        covid19 = result
 
-          var result = {
-            time: new Date().getTime(),
-            live: live,
-            confirmed: [
-              sum.confirmed[0], last[0]
-            ],
-            critical: [
-              sum.confirmedCritical[0], last[1]
-            ],
-            hospital: [
-              sum.hospitalised[0], last[2]
-            ],
-            deceased: [
-              sum.deceased[0], last[3]
-            ],
-            vac1: [
-              vac[2].firstCnt._text * 1, vac[0].firstCnt._text * 1
-            ],
-            vac2: [
-              vac[2].secondCnt._text * 1, vac[0].secondCnt._text * 1
-            ],
-            vac3: [
-              vac[2].thirdCnt._text * 1, vac[0].thirdCnt._text * 1
-            ]
-          }
+        fs.writeFileSync('./data/covid19.json', JSON.stringify(covid19))
 
-          covid19 = result
-
-          fs.writeFileSync('./data/covid19.json', JSON.stringify(covid19))
-
-          resReturn()
-        })
+        resReturn()
+      }).catch(function (error) {
+        console.log(error)
       })
-    })
   } else {
     resReturn()
   }
@@ -199,18 +192,16 @@ router.get('/covid19', function (req, res) {
       }
 
       var result = `[ 국내 코로나 현황 ][br]
-      실시간 : ${dot(covid19.live)}명[br]
-      [br]
       직전 발표자료[br]
       누적 확진자 : ${dot(covid19.confirmed[0])}(${dot(covid19.confirmed[1], true)})[br]
       위중증 : ${dot(covid19.critical[0])}(${dot(covid19.critical[1], true)})[br]
-      신규입원 : ${dot(covid19.hospital[0])}(${dot(covid19.hospital[1], true)})[br]
       사망자 : ${dot(covid19.deceased[0])}(${dot(covid19.deceased[1], true)})[br]
-      [br]
-      백신 접종 수[br]
-      1차 ${dot(covid19.vac1[0])}(${dot(covid19.vac1[1], true)})[br]
-      2차 ${dot(covid19.vac2[0])}(${dot(covid19.vac2[1], true)})[br]
-      3차 ${dot(covid19.vac3[0])}(${dot(covid19.vac3[1], true)})`
+      `
+      // [br]
+      // 백신 접종 수[br]
+      // 1차 ${dot(covid19.vac1[0])}(${dot(covid19.vac1[1], true)})[br]
+      // 2차 ${dot(covid19.vac2[0])}(${dot(covid19.vac2[1], true)})[br]
+      // 3차 ${dot(covid19.vac3[0])}(${dot(covid19.vac3[1], true)})
 
       res.send(result.replace(/  +/g, ""))
 
@@ -406,9 +397,9 @@ router.get('/lostark', function (req, res) {
 router.get('/redirect*', function (req, res, next) {
   var url = req.originalUrl.substring(10)
 
-  if(url.startsWith('http')){
+  if (url.startsWith('http')) {
     res.redirect(url)
-  }else{
+  } else {
     res.send(`URL이 올바르지 않습니다. http:// 또는 https://가 포함되어야 합니다.<br>
     사용법 : api.bbforest.net/redirect/이동할주소<br>
     입력된URL : api.bbforest.net/redirect/${url}<br>
