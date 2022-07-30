@@ -5,7 +5,7 @@ const Stream = require('stream');
 const ytdl = require('ytdl-core');
 
 router.get('/*', function (req, res) {
-    var url = req.originalUrl.substring(4)
+    var url = req.originalUrl.substring(4).replace('https://youtu.be/', '').replace('https://www.youtube.com/watch?v=', '')
 
     if(url == ''){
         res.send({
@@ -40,7 +40,8 @@ router.get('/*', function (req, res) {
         } else {
             //파일이 존재하지 않으면 받아오기
             var stream = ytdl(id, {
-                quality: 'highest'
+                quality: 'highest',
+                filter: 'audioandvideo'
             }).on('error', function (error) {
                 //오류 발생시 반환
                 res.status(404).send(error.message)
