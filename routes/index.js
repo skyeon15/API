@@ -28,21 +28,34 @@ router.get('/ip', function (req, res) {
 
 //서버 시간 구하기
 router.get('/time/:url', function (req, res) {
-  var url = req.params.url
+  var url = req.params.url.replace('http://', '').replace('https://', '')
   var send = new Date().getTime()
-  EKE.eRequest('GET', url, function (data, headers) {
-    res.status(200).json({
-      status: "정상",
-      "url": url,
-      "abbreviation": "KST",
-      "timezone": "Asia/Seoul",
-      "utc_offset": "UTC+09:00",
-      "url_time": time.format("YYYY-MM-DD hh:mm:ss.CCC", headers.date),
-      "server_time": time.format("YYYY-MM-DD hh:mm:ss.CCC"),
-      "latency": new Date().getTime() - send + 'ms'
-    });
-  })
 
+  axios.get('https://' + url)
+    .then(function (ress) {
+      res.status(200).json({
+        status: "정상",
+        "url": url,
+        "abbreviation": "KST",
+        "timezone": "Asia/Seoul",
+        "utc_offset": "UTC+09:00",
+        "url_time": time.format("YYYY-MM-DD hh:mm:ss.CCC", ress.headers.date),
+        "server_time": time.format("YYYY-MM-DD hh:mm:ss.CCC"),
+        "latency": new Date().getTime() - send + 'ms'
+      });
+    })
+    .catch(function (error) {
+      console.log(error)
+      res.status(200).json({
+        status: "오류",
+        "url": url,
+        "abbreviation": "KST",
+        "timezone": "Asia/Seoul",
+        "utc_offset": "UTC+09:00",
+        "server_time": time.format("YYYY-MM-DD hh:mm:ss.CCC"),
+        "latency": new Date().getTime() - send + 'ms'
+      });
+    })
 });
 
 //URL 미입력시 bbforest
@@ -54,75 +67,73 @@ router.get('/time', function (req, res) {
 router.get('/school-lunch/:name', function (req, res) {
   //학교 정보 확인 구간
   var name, education, school
-  EKE.eRequest('GET', 'https://open.neis.go.kr/hub/schoolInfo?Type=json&SCHUL_NM=' + req.params.name, function (data) {
-    var json = JSON.parse(data)
-    if (json.schoolInfo) {
-      name = json.schoolInfo[1].row[0].SCHUL_NM //학교이름
-      education = json.schoolInfo[1].row[0].ATPT_OFCDC_SC_CODE //교육청코드
-      school = json.schoolInfo[1].row[0].SD_SCHUL_CODE  //학교코드
-    }
-    else {
-      res.status(200).json({
-        STATUS: "오류-학교이름",
-        NAME: req.params.name,
-        DATE: time.format("YYMMDD")
-      })
-      return
-    }
+  axios.get(encodeURI('https://open.neis.go.kr/hub/schoolInfo?Type=json&SCHUL_NM=' + req.params.name))
+    .then(function (ress) {
+      var json = ress.data
+      if (json.schoolInfo) {
+        name = json.schoolInfo[1].row[0].SCHUL_NM //학교이름
+        education = json.schoolInfo[1].row[0].ATPT_OFCDC_SC_CODE //교육청코드
+        school = json.schoolInfo[1].row[0].SD_SCHUL_CODE  //학교코드
+      }
+      else {
+        res.status(200).json({
+          STATUS: "오류-학교이름",
+          NAME: req.params.name,
+          DATE: time.format("YYMMDD")
+        })
+        return
+      }
 
-    //급식 정보 확인 구간
-    EKE.eRequest('GET', 'https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE='
-      + education + '&SD_SCHUL_CODE=' + school + '&MLSV_YMD=' + time.format("YYMMDD"),
-      function (data) {
-        json = JSON.parse(data)
-        if (json.mealServiceDietInfo) {
-          var meal
-          if (json.mealServiceDietInfo[1].row[2]) {
-            meal = [{
-              "meal": json.mealServiceDietInfo[1].row[0].MMEAL_SC_NM,
-              "dish": json.mealServiceDietInfo[1].row[0].DDISH_NM
-            }, {
-              "meal": json.mealServiceDietInfo[1].row[1].MMEAL_SC_NM,
-              "dish": json.mealServiceDietInfo[1].row[1].DDISH_NM
-            }, {
-              "meal": json.mealServiceDietInfo[1].row[2].MMEAL_SC_NM,
-              "dish": json.mealServiceDietInfo[1].row[2].DDISH_NM
-            }]
-          }
-          else if (json.mealServiceDietInfo[1].row[1]) {
-            meal = [{
-              "meal": json.mealServiceDietInfo[1].row[0].MMEAL_SC_NM,
-              "dish": json.mealServiceDietInfo[1].row[0].DDISH_NM
-            }, {
-              "meal": json.mealServiceDietInfo[1].row[1].MMEAL_SC_NM,
-              "dish": json.mealServiceDietInfo[1].row[1].DDISH_NM
-            }]
-          }
-          else if (json.mealServiceDietInfo[1].row[0]) {
-            meal = [{
-              "meal": json.mealServiceDietInfo[1].row[0].MMEAL_SC_NM,
-              "dish": json.mealServiceDietInfo[1].row[0].DDISH_NM
-            }]
-          }
+      // 급식 정보 확인 구간
+      axios.get('https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=' + education + '&SD_SCHUL_CODE=' + school + '&MLSV_YMD=' + time.format("YYMMDD"))
+        .then(function (ress) {
+          var json = ress.data
+          // 급식 정보 있으면
+          if (json.mealServiceDietInfo) {
 
-          //JSON 반환
+            var meal = []
+          
+            for(var m of json.mealServiceDietInfo[1].row){
+              meal.push({
+                "meal": m.MMEAL_SC_NM,
+                "dish": m.DDISH_NM
+              })
+            }
+            
+            //JSON 반환
+            res.status(200).json({
+              STATUS: "정상",
+              NAME: name,
+              DATE: time.format("YYMMDD"),
+              MEALS: meal
+            })
+            return
+          } else {
+            res.status(200).json({
+              STATUS: "오류-급식없음",
+              NAME: name,
+              DATE: time.format("YYMMDD")
+            })
+            return
+          }
+        })
+        .catch(function (error) {
+          console.log(error)
           res.status(200).json({
-            STATUS: "정상",
-            NAME: name,
-            DATE: time.format("YYMMDD"),
-            MEALS: meal
-          })
-          return
-        } else {
-          res.status(200).json({
-            STATUS: "오류-급식없음",
+            STATUS: "오류-급식서버오류",
             NAME: name,
             DATE: time.format("YYMMDD")
           })
-          return
-        }
+        })
+    })
+    .catch(function (error) {
+      console.log(error)
+      res.status(200).json({
+        STATUS: "오류-학교서버오류",
+        NAME: name,
+        DATE: time.format("YYMMDD")
       })
-  })
+    })
 })
 
 var covid19 = JSON.parse(fs.readFileSync('./data/covid19.json'))
@@ -218,74 +229,80 @@ router.get('/weather', function (req, res) {
     res.send('사용법: ?city=<지역명>&type=[json, text]')
     return
   }
+  axios.get(encodeURI('https://m.search.naver.com/search.naver?query=날씨+' + req.query.city))
+    .then(function (ress) {
 
-  EKE.eRequest('GET', 'https://m.search.naver.com/search.naver?query=날씨+' + req.query.city, function (data) {
-    var s = cheerio.load(data)
+      var s = cheerio.load(ress.data)
 
-    //위치
-    var city = s('div.title_area > div > span').text()
-    //날씨
-    var weather = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > p > span.weather.before_slash').text()
-    //현재온도
-    var temp = s('div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.weather_graphic > div.temperature_text > strong').text().replace('현재 온도', '');
-    //최고온도
-    var temp_low = s('div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.lowest').text().replace('최저기온', '');
-    //최저온도
-    var temp_high = s('div.content_wrap > div.content_area > div > div > div.list_box > ul > li.week_item.today > div > div.cell_temperature > span > span.highest').text().replace('최고기온', '');
-    //미세먼지
-    var pm = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(1) > a > span').text()
-    //초미세먼지
-    var pm_m = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li:nth-child(2) > a > span').text()
-    //자외선
-    var ultraviolet = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.level1 > a > span').text()
-    //일몰
-    var sunset = s('div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.report_card_wrap > ul > li.item_today.type_sun > a > span').text()
+      //위치
+      var city = s('div.title_area > div > span').text()
+      //날씨
+      var weather = s('span.weather.before_slash').text()
+      //현재온도
+      var temp = s('div.weather_info > div > div._today > div.weather_graphic > div.temperature_text > strong').text().replace('현재 온도', '');
+      //최고온도
+      var temp_low = s('li.week_item.today > div > div.cell_temperature > span > span.lowest').text().replace('최저기온', '');
+      //최저온도
+      var temp_high = s('li.week_item.today > div > div.cell_temperature > span > span.highest').text().replace('최고기온', '');
+      //미세먼지
+      var pm = s('div.weather_info > div > div.report_card_wrap > ul > li:nth-child(1) > a > span').text()
+      //초미세먼지
+      var pm_m = s('div.weather_info > div > div.report_card_wrap > ul > li:nth-child(2) > a > span').text()
+      //자외선
+      var ultraviolet = s('div.weather_info > div > div.report_card_wrap > ul > li.item_today.level4 > a > span').text()
+      //일몰
+      var sunset = s('div.weather_info > div > div.report_card_wrap > ul > li.item_today.type_sun > a > span').text()
+      // 바람
+      var wind = s('div._today > div.temperature_info > dl > dd:nth-child(6)').text()
 
-    //지역을 못 받아오면
-    if (city != '') {
-      //요약
-      var summary = s('#ct > section.sc.csm.cs_weather_new._cs_weather > div > div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > dl').text().trim().split(' ')
-      //강수확률
-      var precipitation = summary[1]
-      //습도
-      var humidity = summary[3]
-      //바람
-      var wind = [summary[4].toString().replace('바람(', '').replace(')', ''), summary[5]]
-    }
-
-    if (req.query.type == 'text') {
-      if (city == '') {
-        res.send('위치 정보를 찾을 수 없어요.')
-        return
+      //지역을 못 받아오면
+      if (city != '') {
+        //요약
+        var summary = s('#ct > section.sc.csm.cs_weather_new._cs_weather > div > div.content_wrap > div.flicking-viewport > div > div:nth-child(1) > div:nth-child(1) > div > div.weather_info > div > div.temperature_info > dl').text().trim().split(' ')
+        //강수확률
+        var precipitation = summary[1]
+        //습도
+        var humidity = summary[3]
+        //바람
+        var wind = [summary[4].toString().replace('바람(', '').replace(')', ''), summary[5]]
       }
 
-      var result = `[ ${city.replace(city.split(' ')[0], '')}의 현재 날씨는 ${weather}! ][br]
-            [br]
-            기온 : ${temp}(최저 ${temp_low}/최고 ${temp_high})[br]
-            바람 : ${wind[0]} ${wind[1]}[br]
-            일몰시간 : ${sunset}[br]
-            강수확률 : ${precipitation}[br]
-            습도 : ${humidity}[br]
-            (초)미세먼지 : ${pm_m}, ${pm}[br]
-            자외선 : ${ultraviolet}`
-      res.send(result.replace(/  +/g, ""))
-    } else {
-      res.send({
-        city: city,
-        weather: weather,
-        temp: temp,
-        temp_low: temp_low,
-        temp_high: temp_high,
-        precipitation: precipitation,
-        humidity: humidity,
-        pm: pm,
-        pm_m: pm_m,
-        ultraviolet: ultraviolet,
-        sunset: sunset,
-        wind: wind
-      })
-    }
-  })
+      if (req.query.type == 'text') {
+        if (city == '') {
+          res.send('위치 정보를 찾을 수 없어요.')
+          return
+        }
+
+        var result = `[ ${city.replace(city.split(' ')[0], '')}의 현재 날씨는 ${weather}! ][br]
+          [br]
+          기온 : ${temp}(최저 ${temp_low}/최고 ${temp_high})[br]
+          바람 : ${wind[0]} ${wind[1]}[br]
+          일몰시간 : ${sunset}[br]
+          강수확률 : ${precipitation}[br]
+          습도 : ${humidity}[br]
+          (초)미세먼지 : ${pm_m}, ${pm}[br]
+          자외선 : ${ultraviolet}`
+        res.send(result.replace(/  +/g, ""))
+      } else {
+        res.send({
+          city: city,
+          weather: weather,
+          temp: temp,
+          temp_low: temp_low,
+          temp_high: temp_high,
+          precipitation: precipitation,
+          humidity: humidity,
+          pm: pm,
+          pm_m: pm_m,
+          ultraviolet: ultraviolet,
+          sunset: sunset,
+          wind: wind
+        })
+      }
+    })
+    .catch(function(error){
+console.log(error)
+    })
 })
 
 // var fs = require('fs')
