@@ -57,7 +57,7 @@ function download(id, callback) {
         filter: 'audioandvideo'
     }).on('error', function (error) {
         //오류 발생시 반환
-        res.status(404).send(error.message)
+        // res.status(404).send(error.message)
         console.log(error.message)
         return
     })
