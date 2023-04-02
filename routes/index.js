@@ -165,7 +165,7 @@ router.get('/covid19', function (req, res) {
           ],
           deceased: [
             data.death_acc[length], last[2]
-          ],
+          ]
           // 백신 API 확인 중
           // vac1: [
           //   vac[2].firstCnt._text * 1, vac[0].firstCnt._text * 1
