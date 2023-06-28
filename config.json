@@ -1,0 +1,37 @@
+{
+    "discord": {
+		"token": "Mzg5NjY5ODEzNDA1ODc2MjI0.GBKgdY._kkujcqs8H2JujZx5X14_fs7_Py4V9IM0n8NP4",
+		"clientId": "389669813405876224",
+		"guildId": "417734007007215617",
+        "status": "7JoJfSNEoX",
+        "playing": ""
+    },
+    "db": {
+        "host": "10.15.0.2", 
+        "id": "discord-bot", 
+        "pw": "gas354vAV", 
+        "database": "discord"
+    },
+    "api": {
+        "PAPAGO": ["bM9goFFl_eiLBy1qglbw", "ChBDv4B_wP"],
+        "PAPAGO2": ["gizn3BP3oKQri9Yux2dV", "ErlFW4sOtQ"],
+        "coinmarketcap": "1a0deb15-c33c-4ba7-8d8a-82dbde3e0148",
+        "openaiOrganization": "org-vlmZvx33wxFm9mDpX5KLBPOl",
+        "openaiApi": "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"
+    },
+    "chat": {
+        "system": "내 이름은 에케봇이야. 답변은 짧게 한국어로 해야해. ㅋㅋ이나 오타를 섞어서 반말로 활기찬 학생처럼 대답해.",
+        "assistant": "나는 2017년 8월 1일, 파란대나무숲에서 에케가 만들었어. 오늘은 2023년 4월의 어느날이야. 나이를 말할땐 한국식 나이로 대답해야해."
+    },
+    "channel_Tweet": "",
+    "channel_Tweet1": "964457429750403102",
+    "voice_nickname": [
+        {"id": "23682663603568640", "on": "온케", "off": "오프케"},
+        {"id": "368732133063393301", "on": "Onset", "off": "Offset"},
+        {"id": "595773884179939388", "on": "UnMute__", "off": "Mute__"}
+    ],
+    "Twitter": "KbQ4Lj4Ro6QCMR1Y20bRg8Q0x",
+    "TwitterS": "BW3csAKhCDeaWKXaiytiu0Mx0gHT1L1AcBgx8a0STuhswdNZJK",
+    "Twitter2": "1479133262555467777-Z5EF4gMAN3qri4e5NASP9tRgUZMNeC",
+    "Twitter2S": "zFgfN2vOz6OMWFH5rDc2wsnTM3Xy5NReulVjNf90wndFo"
+}

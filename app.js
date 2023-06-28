@@ -30,6 +30,7 @@ app.use(cookieParser());
 app.use('/', indexRouter);
 app.use('/users', usersRouter);
 app.use('/dl', require('./routes/dl.js'))
+app.use('/ai', require('./routes/ai.js'))
 app.use('/vrc', require('./routes/VRChat.js'))
 
 app.use(express.static(path.join(__dirname, 'public')));
