@@ -165,7 +165,7 @@ router.get('/covid19', function (req, res) {
           ],
           deceased: [
             data.death_acc[length], last[2]
-          ],
+          ]
           // 백신 API 확인 중
           // vac1: [
           //   vac[2].firstCnt._text * 1, vac[0].firstCnt._text * 1
@@ -229,7 +229,7 @@ router.get('/weather', function (req, res) {
     res.send('사용법: ?city=<지역명>&type=[json, text]')
     return
   }
-  axios.get(encodeURI('https://m.search.naver.com/search.naver?query=날씨+' + req.query.city))
+  axios.get(encodeURI('https://m.search.naver.com/search.naver?query=' + req.query.city + ' 날씨'))
     .then(function (ress) {
 
       var s = cheerio.load(ress.data)
@@ -264,7 +264,7 @@ router.get('/weather', function (req, res) {
         //습도
         var humidity = summary[3]
         //바람
-        var wind = [summary[4].toString().replace('바람(', '').replace(')', ''), summary[5]]
+        var wind = [summary[4]?.toString()?.replace('바람(', '')?.replace(')', ''), summary[5]]
       }
 
       if (req.query.type == 'text') {
