@@ -8,9 +8,13 @@ const configuration = new Configuration({
 });
 const openai = new OpenAIApi(configuration);
 
+// get
+router.get('/', function (req, res, next) {
+  res.send('/chat post')
+})
+
 // AI API
 router.post('/chat', function (req, res, next) {
-  console.log(req.body)
   openai.createChatCompletion({
     model: "gpt-3.5-turbo",
     messages: [{ role: "system", content: chat.system },

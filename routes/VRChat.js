@@ -2,7 +2,6 @@ var express = require('express');
 var router = express.Router();
 const vrchat = require("vrchat");
 const https = require('https')
-const Prism = require('prism-vrc')
 
 const configuration = new vrchat.Configuration({
   username: "bbforest",
@@ -30,7 +29,6 @@ router.get('/', function (req, res, next) {
 
 router.get('/test', async (req, res) => {
 	res.writeHead(200, { 'Content-Type': 'video/mp4' });
-	res.end(await Prism("Hello, world!"));
 });
 
 module.exports = router;
