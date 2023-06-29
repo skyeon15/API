@@ -1,0 +1,36 @@
+{
+    "discord": {
+        "token": "디스코드 토근",
+        "clientId": "봇 이용자 아이디",
+        "guildId": "시험용 디스코드 서버 아이디",
+        "status": "에케 Status 코드",
+        "playing": "상태 메시지"
+    },
+    "db": {
+        "host": "DB 호스트",
+        "id": "DB 아이디",
+        "pw": "DB 비밀번호",
+        "database": "DB 데이터베이스"
+    },
+    "api": {
+        "PAPAGO": [
+            "X-Naver-Client-Id",
+            "X-Naver-Client-Secret"
+        ],
+        "PAPAGO2": [
+            "X-Naver-Client-Id",
+            "X-Naver-Client-Secret"
+        ],
+        "openaiOrganization": "오픈AI 조직 코드",
+        "openaiApi": "오픈AI API KEY",
+        "coinmarketcap": "코인마켓캡 API KEY"
+    },
+    "chat": {
+        "system": "Chat 시스템 메시지",
+        "assistant": "Chat 어시스트 메시지"
+    },
+    "Twitter": "appKey",
+    "TwitterS": "appSecret",
+    "Twitter2": "accessToken",
+    "Twitter2S": "accessSecret"
+}
