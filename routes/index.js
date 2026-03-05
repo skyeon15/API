@@ -97,14 +97,14 @@ router.get('/school-lunch/:name', function (req, res) {
           if (json.mealServiceDietInfo) {
 
             var meal = []
-          
-            for(var m of json.mealServiceDietInfo[1].row){
+
+            for (var m of json.mealServiceDietInfo[1].row) {
               meal.push({
                 "meal": m.MMEAL_SC_NM,
                 "dish": m.DDISH_NM
               })
             }
-            
+
             //JSON 반환
             res.status(200).json({
               STATUS: "정상",
@@ -141,8 +141,6 @@ router.get('/school-lunch/:name', function (req, res) {
     })
 })
 
-<<<<<<< Updated upstream
-=======
 var covid19 = JSON.parse(fs.readFileSync('./data/covid19.json'))
 
 //코로나 정보
@@ -229,8 +227,6 @@ router.get('/covid19', function (req, res) {
     }
   }
 })
-
->>>>>>> Stashed changes
 //네이버 날씨
 router.get('/weather', function (req, res) {
   logger.info('날씨 조회 요청', { city: req.query.city, ip: requestIp.getClientIp(req), type: req.query.type });
@@ -310,7 +306,7 @@ router.get('/weather', function (req, res) {
         })
       }
     })
-    .catch(function(error){
+    .catch(function (error) {
       logger.error('날씨 정보 조회 오류', { city: req.query.city, error: error.message })
     })
 })
