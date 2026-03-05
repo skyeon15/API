@@ -8,9 +8,11 @@ const convert = require('xml-js');
 const cheerio = require('cheerio');
 const fs = require('fs');
 const { default: axios } = require('axios');
+const logger = require('../modules/logger');
 
 /* GET home page. */
 router.get('/', function (req, res, next) {
+  logger.info('홈페이지 접속', { ip: requestIp.getClientIp(req) });
   // res.status(200).render('index', { title: '에케 API' });
   res.redirect("https://docs.api.bbforest.net")
 });
@@ -23,6 +25,7 @@ router.get('/news', function (req, res, next) {
 router.get('/ip', function (req, res) {
   let ip = requestIp.getClientIp(req);
   if (ip.startsWith('::ffff:')) ip = ip.replace('::ffff:', '');
+  logger.info('IP 조회', { ip });
   res.status(200).send(ip)
 });
 
@@ -30,6 +33,7 @@ router.get('/ip', function (req, res) {
 router.get('/time/:url', function (req, res) {
   var url = req.params.url.replace('http://', '').replace('https://', '')
   var send = new Date().getTime()
+  logger.info('시간 조회 요청', { url, ip: requestIp.getClientIp(req) });
 
   axios.get('https://' + url)
     .then(function (ress) {
@@ -45,7 +49,7 @@ router.get('/time/:url', function (req, res) {
       });
     })
     .catch(function (error) {
-      console.log(error)
+      logger.error('시간 조회 오류', { url, error: error.message })
       res.status(200).json({
         status: "오류",
         "url": url,
@@ -65,6 +69,7 @@ router.get('/time', function (req, res) {
 
 //학교 급식 알아오기
 router.get('/school-lunch/:name', function (req, res) {
+  logger.info('급식 조회 요청', { school: req.params.name, ip: requestIp.getClientIp(req) });
   //학교 정보 확인 구간
   var name, education, school
   axios.get(encodeURI('https://open.neis.go.kr/hub/schoolInfo?Type=json&SCHUL_NM=' + req.params.name))
@@ -118,7 +123,7 @@ router.get('/school-lunch/:name', function (req, res) {
           }
         })
         .catch(function (error) {
-          console.log(error)
+          logger.error('급식 정보 조회 오류', { name, error: error.message })
           res.status(200).json({
             STATUS: "오류-급식서버오류",
             NAME: name,
@@ -127,7 +132,7 @@ router.get('/school-lunch/:name', function (req, res) {
         })
     })
     .catch(function (error) {
-      console.log(error)
+      logger.error('학교 정보 조회 오류', { name: req.params.name, error: error.message })
       res.status(200).json({
         STATUS: "오류-학교서버오류",
         NAME: name,
@@ -136,8 +141,99 @@ router.get('/school-lunch/:name', function (req, res) {
     })
 })
 
+<<<<<<< Updated upstream
+=======
+var covid19 = JSON.parse(fs.readFileSync('./data/covid19.json'))
+
+//코로나 정보
+router.get('/covid19', function (req, res) {
+  logger.info('코로나19 정보 조회', { ip: requestIp.getClientIp(req), type: req.query.type });
+  //5분에 한 번 캐시
+  if (covid19.time + (60000 * 5) < new Date().getTime()) {
+    // 데이터 파싱
+    axios.get('https://coronaboard.kr/generated/KR.json')
+      .then(function (res) {
+        var length = res.data.date.length - 1
+        var data = res.data
+
+        //12시 지나서 발표자료가 없으면 직전 자료로 대체
+        if (data.confirmed[length] == 0) {
+          var last = [covid19.confirmed[1], covid19.critical[1], covid19.deceased[1]]
+        } else {
+          var last = [data.confirmed[length], data.critical[length], data.death[length]]
+        }
+
+        var result = {
+          time: new Date().getTime(),
+          confirmed: [
+            data.confirmed_acc[length], last[0]
+          ],
+          critical: [
+            data.critical_acc[length], last[1]
+          ],
+          deceased: [
+            data.death_acc[length], last[2]
+          ]
+          // 백신 API 확인 중
+          // vac1: [
+          //   vac[2].firstCnt._text * 1, vac[0].firstCnt._text * 1
+          // ],
+          // vac2: [
+          //   vac[2].secondCnt._text * 1, vac[0].secondCnt._text * 1
+          // ],
+          // vac3: [
+          //   vac[2].thirdCnt._text * 1, vac[0].thirdCnt._text * 1
+          // ]
+        }
+
+        covid19 = result
+
+        fs.writeFileSync('./data/covid19.json', JSON.stringify(covid19))
+
+        resReturn()
+      }).catch(function (error) {
+        logger.error('코로나19 정보 조회 오류', { error: error.message })
+      })
+  } else {
+    resReturn()
+  }
+  function resReturn() {
+    //반환
+    if (req.query.type == "text") {
+      function dot(todot, compare = false) {
+        var check = Math.sign(todot)
+        if (check == -1 && compare) {
+          return todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
+        } else if (compare) {
+          return '+' + todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
+        }
+        return todot.toString().replace(/\B(?<!\.\d*)(?=(\d{3})+(?!\d))/g, ",")
+      }
+
+      var result = `[ 국내 코로나 현황 ][br]
+      직전 발표자료[br]
+      누적 확진자 : ${dot(covid19.confirmed[0])}(${dot(covid19.confirmed[1], true)})[br]
+      위중증 : ${dot(covid19.critical[0])}(${dot(covid19.critical[1], true)})[br]
+      사망자 : ${dot(covid19.deceased[0])}(${dot(covid19.deceased[1], true)})[br]
+      `
+      // [br]
+      // 백신 접종 수[br]
+      // 1차 ${dot(covid19.vac1[0])}(${dot(covid19.vac1[1], true)})[br]
+      // 2차 ${dot(covid19.vac2[0])}(${dot(covid19.vac2[1], true)})[br]
+      // 3차 ${dot(covid19.vac3[0])}(${dot(covid19.vac3[1], true)})
+
+      res.send(result.replace(/  +/g, ""))
+
+    } else {
+      res.send(covid19)
+    }
+  }
+})
+
+>>>>>>> Stashed changes
 //네이버 날씨
 router.get('/weather', function (req, res) {
+  logger.info('날씨 조회 요청', { city: req.query.city, ip: requestIp.getClientIp(req), type: req.query.type });
   //지역이 입력되지 않으면
   if (req.query.city == undefined) {
     res.send('사용법: ?city=<지역명>&type=[json, text]')
@@ -215,7 +311,7 @@ router.get('/weather', function (req, res) {
       }
     })
     .catch(function(error){
-console.log(error)
+      logger.error('날씨 정보 조회 오류', { city: req.query.city, error: error.message })
     })
 })
 
@@ -228,6 +324,7 @@ console.log(error)
 
 //올림픽 메달
 router.get('/olympic', function (req, res) {
+  logger.info('올림픽 정보 조회', { ip: requestIp.getClientIp(req) });
   EKE.eRequest('GET', 'https://m.search.naver.com/search.naver?query=올림픽', function (data) {
     var s = cheerio.load(data)
 
@@ -256,77 +353,9 @@ router.get('/olympic', function (req, res) {
   })
 })
 
-//로스트아크 캐릭터
-router.get('/lostark', function (req, res) {
-  EKE.eRequest('GET', 'https://lostark.game.onstove.com/Profile/Character/' + req.query.nickname, function (data) {
-    var s = cheerio.load(data)
-
-    //닉네임
-    var name = s('#lostark-wrapper > div > main > div > div.profile-character-info > span.profile-character-info__name').text()
-    //서버
-    var server = s('#lostark-wrapper > div > main > div > div.profile-character-info > span.profile-character-info__server').text().replace('@', '')
-    //레벨
-    var level = s('#lostark-wrapper > div > main > div > div.profile-character-info > span.profile-character-info__lv').text().replace('Lv.', '')
-    //원정대 레벨
-    var lever_expedition = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info > div.level-info__expedition > span').text().replace('원정대 레벨Lv.', '')
-    //전투 레벨
-    var level_fight = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info > div.level-info__item > span:nth-child(2)').text().replace('Lv.', '')
-    //장착 아이템 레벨
-    var level_item = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info2 > div.level-info2__expedition > span:nth-child(2)').text().replace('Lv.', '')
-    //달성 아이템 레벨
-    var level_item2 = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.level-info2 > div.level-info2__item > span:nth-child(2)').text().replace('Lv.', '')
-
-    //칭호
-    var title = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__title > span:nth-child(2)').text()
-    //길드
-    var guild = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__guild > span:nth-child(2)').text()
-    //PVP
-    var pvp = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.level-info__pvp > span:nth-child(2)').text()
-    //영지
-    var wisdom = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__wisdom > span:nth-child(3)').text()
-    var wisdom_level = s('#lostark-wrapper > div > main > div > div.profile-ingame > div.profile-info > div.game-info > div.game-info__wisdom > span:nth-child(2)').text().replace('Lv.', '')
-
-    if (req.query.type == 'text') {
-      if (name == '') {
-        res.send('캐릭터 정보를 찾을 수 없어요.')
-        return
-      }
-
-      var result = `[ ${name}의 로스트아크 ][br]
-                    Lv.${level}[br]
-                    서버 : ${server}[br]
-                    PVP : ${pvp}[br]
-                    칭호 : ${title}[br]
-                    길드 : ${guild}[br]
-                    영지 : ${wisdom} (Lv.${wisdom_level})[br]
-                    [br]
-                    레벨 정보[br]
-                    원정대 : ${lever_expedition}[br]
-                    전투 : ${level_fight}[br]
-                    장착 아이템 : ${level_item}[br]
-                    달성 아이템 : ${level_item2}`
-      res.send(result.replace(/  +/g, ""))
-    } else {
-      res.send({
-        name: name,
-        server: server,
-        level: level,
-        lever_expedition: lever_expedition,
-        level_fight: level_fight,
-        level_item: level_item,
-        level_item2: level_item2,
-        title: title,
-        guild: guild,
-        pvp: pvp,
-        wisdom: wisdom,
-        wisdom_level: wisdom_level
-      })
-    }
-  })
-})
-
 router.get('/redirect*', function (req, res, next) {
   var url = req.originalUrl.substring(10)
+  logger.info('리다이렉트 요청', { url, ip: requestIp.getClientIp(req) });
 
   if (url.startsWith('http')) {
     res.redirect(url)
