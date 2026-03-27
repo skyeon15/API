@@ -14,26 +14,22 @@ lerna-debug.log*
 
 # OS
 .DS_Store
+Thumbs.db
+Desktop.ini
 
 # Tests
 /coverage
 /.nyc_output
 
-# IDEs and editors
-/.idea
-.project
-.classpath
-.c9/
-*.launch
-.settings/
-*.sublime-workspace
+# General Dot-Folders (Ignore all folders starting with .)
+.*/
+!.github
 
-# IDE - VSCode
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+# Markdown files
+*.md
+!README.md
+!LICENSE.md
+!LICENSE
 
 # dotenv environment variable files
 .env
@@ -41,10 +37,6 @@ lerna-debug.log*
 .env.test.local
 .env.production.local
 .env.local
-
-# temp directory
-.temp
-.tmp
 
 # Runtime data
 pids
@@ -55,15 +47,6 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# VS Code history
-.history/
-
-# OS specific files
-Thumbs.db
-Desktop.ini
-.DS_Store
-
 # AdminJS generated bundle
-.adminjs/
 legacy*
 /data

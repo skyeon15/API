@@ -4,6 +4,7 @@ export const SERVICE_REGISTRY = [
   { value: 'neis', label: '학교' },
   { value: 'lostark', label: '게임' },
   { value: 'wrua', label: '일정관리' },
+  { value: 'alimtalk', label: '알림톡' },
 ] as const;
 
 export type ServiceValue = (typeof SERVICE_REGISTRY)[number]['value'];

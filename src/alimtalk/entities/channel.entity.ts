@@ -1,29 +1,32 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, BaseEntity, ManyToOne, JoinColumn } from 'typeorm';
 import { User } from '../../users/entities/user.entity.js';
 
-@Entity('api_keys')
-export class ApiKey extends BaseEntity {
+@Entity('alimtalk_channels')
+export class AlimtalkChannel extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
 
   @Column({ unique: true })
-  key: string;
+  senderKey: string;
+
+  @Column()
+  plusId: string;
 
   @Column()
   name: string;
 
+  @Column()
+  categoryCode: string;
+
   @Column({ default: true })
   isActive: boolean;
 
-  @Column('text', { array: true, default: '{}' })
-  allowedServices: string[];
-
   @Column({ nullable: true })
-  userId: number;
+  createdByUserId: number;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
-  @JoinColumn({ name: 'userId' })
-  user: User;
+  @JoinColumn({ name: 'createdByUserId' })
+  createdByUser: User;
 
   @CreateDateColumn()
   createdAt: Date;

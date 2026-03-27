@@ -8,12 +8,19 @@ import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { WruaModule } from './wrua/wrua.module.js';
 import { LostarkModule } from './lostark/lostark.module.js';
-
 import { CommonModule } from './common/common.module.js';
 import { NeisModule } from './neis/neis.module.js';
 import { InfoModule } from './info/info.module.js';
+import { AlimtalkModule } from './alimtalk/alimtalk.module.js';
+import { UserModule } from './users/user.module.js';
+import { AuditModule } from './audit/audit.module.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiKey } from './admin/entities/api-key.entity.js';
+import { User } from './users/entities/user.entity.js';
+import { AuditLog } from './audit/entities/audit-log.entity.js';
+import { AlimtalkChannel } from './alimtalk/entities/channel.entity.js';
+import { AlimtalkTemplate } from './alimtalk/entities/template.entity.js';
+import { AlimtalkMessage } from './alimtalk/entities/message.entity.js';
 
 @Module({
   imports: [
@@ -24,15 +31,20 @@ import { ApiKey } from './admin/entities/api-key.entity.js';
       username: process.env.DB_USER || 'pds_user',
       password: process.env.DB_PASSWORD || 'pds_password',
       database: process.env.DB_NAME || 'pds_api',
-      entities: [ApiKey],
-      synchronize: true, // 개발 환경에서는 true, 운영에서는 migration 추천
+      entities: [ApiKey, User, AuditLog, AlimtalkChannel, AlimtalkTemplate, AlimtalkMessage],
+      synchronize: false,
+      migrations: [join(process.cwd(), 'dist/migrations/*.js')],
+      migrationsRun: true,
     }),
     AdminPanelModule,
+    UserModule,
+    AuditModule,
     WruaModule,
     LostarkModule,
     CommonModule,
     NeisModule,
     InfoModule,
+    AlimtalkModule,
     ServeStaticModule.forRoot({
       rootPath: join(process.cwd(), 'public'),
       serveRoot: '/public',
@@ -48,4 +60,3 @@ import { ApiKey } from './admin/entities/api-key.entity.js';
   ],
 })
 export class AppModule {}
-

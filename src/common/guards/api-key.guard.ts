@@ -50,6 +50,7 @@ export class ApiKeyGuard implements CanActivate {
       throw new ForbiddenException(`해당 서비스('${requiredService}')에 대한 접근 권한이 없는 API 키예요.`);
     }
 
+    request.apiKey = apiKey;
     return true;
   }
 }

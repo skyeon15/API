@@ -4,13 +4,15 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import * as ipaddr from 'ipaddr.js';
+import ipaddr from 'ipaddr.js';
 
 @Injectable()
 export class IpRestrictionGuard implements CanActivate {
   private readonly allowedRanges = [
-    '100.64.0.0/10', // IPv4 Range
-    'fd7a:115c:a1e0::/48', // IPv6 Range
+    '100.64.0.0/10', // Tailscale IPv4
+    'fd7a:115c:a1e0::/48', // Tailscale IPv6
+    '127.0.0.1/32', // localhost IPv4
+    '::1/128', // localhost IPv6
   ];
 
   canActivate(context: ExecutionContext): boolean {
