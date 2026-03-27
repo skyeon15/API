@@ -4,6 +4,7 @@ import { ApiKey } from './admin/entities/api-key.entity.js';
 import { User } from './users/entities/user.entity.js';
 import { PaymentMethod } from './users/entities/payment-method.entity.js';
 import { VerificationCode } from './users/entities/verification-code.entity.js';
+import { RefreshToken } from './auth/entities/refresh-token.entity.js';
 import { AuditLog } from './audit/entities/audit-log.entity.js';
 import { AlimtalkChannel } from './alimtalk/entities/channel.entity.js';
 import { AlimtalkTemplate } from './alimtalk/entities/template.entity.js';
@@ -19,7 +20,7 @@ export const AppDataSource = new DataSource({
   database: process.env.DB_NAME || 'pds_api',
   synchronize: false,
   logging: true,
-  entities: [ApiKey, User, PaymentMethod, VerificationCode, AuditLog, AlimtalkChannel, AlimtalkTemplate, AlimtalkMessage],
+  entities: [ApiKey, User, PaymentMethod, VerificationCode, RefreshToken, AuditLog, AlimtalkChannel, AlimtalkTemplate, AlimtalkMessage],
   migrations: ['src/migrations/*.ts'],
   migrationsTransactionMode: 'each',
   subscribers: [],

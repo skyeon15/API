@@ -3,7 +3,7 @@ import './admin-setup.js';
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
-import session from 'express-session';
+import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
 import { SERVICE_REGISTRY } from './common/service-registry.js';
 
@@ -11,18 +11,7 @@ async function bootstrap() {
   console.log('[BOOTSTRAP] Starting Nest application...');
   const app = await NestFactory.create(AppModule);
 
-  app.use(
-    session({
-      secret: process.env.SESSION_SECRET || 'pds-secret-key',
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-      },
-    }),
-  );
+  app.use(cookieParser());
 
   app.enableCors({
     origin: (origin, callback) => {

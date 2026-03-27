@@ -8,7 +8,7 @@ export class AppController {
 
   @Get()
   @Redirect('https://platform.bbforest.net', 302)
-  getRoot() {}
+  getRoot() { }
 
   @Get('services')
   getServices() {

@@ -27,16 +27,25 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const refresh = async () => {
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-      });
+      let res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+
+      // access_token 만료 시 refresh_token으로 재발급 후 재시도
+      if (res.status === 401) {
+        const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+          method: 'POST',
+          credentials: 'include',
+        });
+        if (refreshRes.ok) {
+          res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
+        }
+      }
+
       if (res.ok) {
         setUser(await res.json());
       } else {
         setUser(null);
       }
-    } catch (error) {
+    } catch {
       setUser(null);
     } finally {
       setLoading(false);

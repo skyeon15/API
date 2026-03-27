@@ -2,7 +2,9 @@ import { Controller, Get, Post, Query, Body, Ip, UseGuards } from '@nestjs/commo
 import { WruaService } from './wrua.service.js';
 import { Service } from '../common/decorators/service.decorator.js';
 import { ApiKeyGuard } from '../common/guards/api-key.guard.js';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('일정관리')
 @Controller('wrua')
 @UseGuards(ApiKeyGuard)
 @Service('wrua')

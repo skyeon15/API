@@ -4,7 +4,9 @@ import { TimeService } from './time.service.js';
 import axios from 'axios';
 import { Service } from './decorators/service.decorator.js';
 import { ApiKeyGuard } from './guards/api-key.guard.js';
+import { ApiTags } from '@nestjs/swagger';
 
+@ApiTags('공통')
 @Controller()
 @UseGuards(ApiKeyGuard)
 @Service('common')

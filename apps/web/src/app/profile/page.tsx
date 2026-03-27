@@ -52,6 +52,9 @@ export default function ProfilePage() {
   const [serviceRegistry, setServiceRegistry] = useState<Service[]>([]);
   const [loading, setLoading] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
+  const [editingKeyId, setEditingKeyId] = useState<number | null>(null);
+  const [editingKeyName, setEditingKeyName] = useState('');
+  const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
   const [profileError, setProfileError] = useState('');
   const [profileSuccess, setProfileSuccess] = useState(false);
 
@@ -274,11 +277,63 @@ export default function ProfilePage() {
                 {index > 0 && <Separator className="mb-4" />}
                 <div className="space-y-3">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="space-y-1 min-w-0">
-                      <p className="font-medium">{key.name}</p>
-                      <code className="text-xs text-muted-foreground break-all">
-                        {key.key}
-                      </code>
+                    <div className="min-w-0 space-y-2">
+                      {editingKeyId === key.id ? (
+                        <form
+                          onSubmit={(e) => {
+                            e.preventDefault();
+                            if (editingKeyName.trim()) {
+                              handleUpdateApiKey(key.id, { name: editingKeyName.trim() });
+                            }
+                            setEditingKeyId(null);
+                          }}
+                        >
+                          <Input
+                            autoFocus
+                            value={editingKeyName}
+                            onChange={(e) => setEditingKeyName(e.target.value)}
+                            onBlur={() => {
+                              if (editingKeyName.trim()) {
+                                handleUpdateApiKey(key.id, { name: editingKeyName.trim() });
+                              }
+                              setEditingKeyId(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Escape') setEditingKeyId(null);
+                            }}
+                            className="h-7 text-sm font-medium"
+                          />
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          className="font-medium text-left hover:underline decoration-dashed underline-offset-2 cursor-text"
+                          onClick={() => {
+                            setEditingKeyId(key.id);
+                            setEditingKeyName(key.name);
+                          }}
+                          title="클릭하여 이름 변경"
+                        >
+                          {key.name}
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="flex items-center gap-1.5 group"
+                        onClick={() => {
+                          navigator.clipboard.writeText(key.key);
+                          setCopiedKeyId(key.id);
+                          setTimeout(() => setCopiedKeyId(null), 2000);
+                        }}
+                        title="클릭하여 복사"
+                      >
+                        <code className="text-xs text-muted-foreground font-mono">
+                          {key.key.slice(0, 8)}{'•'.repeat(16)}{key.key.slice(-4)}
+                        </code>
+                        <span className="text-xs text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          {copiedKeyId === key.id ? '복사됨' : '복사'}
+                        </span>
+                      </button>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
                       <div className="flex items-center gap-2">
