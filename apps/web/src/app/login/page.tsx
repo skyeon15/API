@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '@/components/ui/button';
@@ -17,10 +17,16 @@ function LoginForm() {
   const [step, setStep] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { login } = useAuth();
+  const { user, loading: authLoading, login } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') || '/profile';
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.replace(redirect);
+    }
+  }, [user, authLoading, redirect, router]);
 
   const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -54,6 +60,8 @@ function LoginForm() {
       setLoading(false);
     }
   };
+
+  if (authLoading || user) return null;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-muted/40 p-4">

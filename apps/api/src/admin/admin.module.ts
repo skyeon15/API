@@ -8,11 +8,13 @@ import AdminJS, { ComponentLoader } from 'adminjs';
 import { Database, Resource as TypeORMResource } from '@adminjs/typeorm';
 import { SERVICE_REGISTRY } from '../common/service-registry.js';
 import { randomBytes } from 'crypto';
-import { resolve } from 'path';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { User } from '../users/entities/user.entity.js';
 import { AuditLog, AuditAction, AuditResource } from '../audit/entities/audit-log.entity.js';
 import { AlimtalkModule } from '../alimtalk/alimtalk.module.js';
-import { AdminChannelController } from './admin-channel.controller.js';
 
 // Register adapter globally
 AdminJS.registerAdapter({ Database, Resource: TypeORMResource });
@@ -21,7 +23,7 @@ const componentLoader = new ComponentLoader();
 const Components = {
   ChannelWizardPage: componentLoader.add(
     'ChannelWizardPage',
-    resolve('./src/admin/components/ChannelWizardPage'),
+    resolve(__dirname, 'components', 'ChannelWizardPage'),
   ),
 };
 
@@ -209,6 +211,6 @@ const Components = {
       },
     }),
   ],
-  controllers: [AdminChannelController],
+  controllers: [],
 })
 export class AdminPanelModule {}

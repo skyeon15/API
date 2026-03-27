@@ -1,0 +1,54 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: pds-api-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-pds_api}
+      POSTGRES_USER: ${DB_USER:-pds_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pds_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    # 프로덕션에서는 DB 포트를 외부로 노출하지 않는 것이 보안상 좋습니다.
+    # 필요한 경우에만 주석을 해제하세요.
+    # ports:
+    #   - "1017:5432"
+    networks:
+      - pds-network
+
+  app:
+    image: ghcr.io/bluebambooforest/api/api:latest
+    container_name: pds-api-app
+    restart: always
+    ports:
+      - "${PORT:-10151}:${PORT:-10151}"
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: ${DB_NAME:-pds_api}
+      DB_USER: ${DB_USER:-pds_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pds_password}
+      PORT: ${PORT:-10151}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:10150}
+    depends_on:
+      - db
+    networks:
+      - pds-network
+
+  web:
+    image: ghcr.io/bluebambooforest/api/web:latest
+    container_name: pds-web-app
+    restart: always
+    ports:
+      - "10150:10150"
+    environment:
+      NEXT_PUBLIC_API_URL: ${API_URL:-http://localhost:10151}
+    networks:
+      - pds-network
+
+volumes:
+  pgdata:
+
+networks:
+  pds-network:
+    driver: bridge

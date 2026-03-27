@@ -19,6 +19,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { ApiKey } from './admin/entities/api-key.entity.js';
 import { User } from './users/entities/user.entity.js';
 import { PaymentMethod } from './users/entities/payment-method.entity.js';
+import { PayappSeller } from './users/entities/payapp-seller.entity.js';
 import { VerificationCode } from './users/entities/verification-code.entity.js';
 import { RefreshToken } from './auth/entities/refresh-token.entity.js';
 import { AuditLog } from './audit/entities/audit-log.entity.js';
@@ -35,7 +36,7 @@ import { AlimtalkMessage } from './alimtalk/entities/message.entity.js';
       username: process.env.DB_USER || 'pds_user',
       password: process.env.DB_PASSWORD || 'pds_password',
       database: process.env.DB_NAME || 'pds_api',
-      entities: [ApiKey, User, PaymentMethod, VerificationCode, RefreshToken, AuditLog, AlimtalkChannel, AlimtalkTemplate, AlimtalkMessage],
+      entities: [ApiKey, User, PaymentMethod, PayappSeller, VerificationCode, RefreshToken, AuditLog, AlimtalkChannel, AlimtalkTemplate, AlimtalkMessage],
       synchronize: false,
       migrations: [join(process.cwd(), 'dist/migrations/*.js')],
       migrationsRun: true,

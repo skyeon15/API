@@ -1,12 +1,14 @@
-import { Controller, Get, Patch, Post, Delete, Body, UnauthorizedException, Param, NotFoundException, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Patch, Post, Delete, Body, UnauthorizedException, Param, NotFoundException, UseGuards, Req, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity.js';
 import { PaymentMethod } from './entities/payment-method.entity.js';
+import { PayappSeller } from './entities/payapp-seller.entity.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ApiExcludeController, ApiTags, ApiOperation } from '@nestjs/swagger';
 import { randomBytes } from 'crypto';
+import { PaymentService } from './payment.service.js';
 
 @ApiExcludeController()
 @UseGuards(JwtAuthGuard)
@@ -17,8 +19,11 @@ export class ProfileController {
     private readonly userRepo: Repository<User>,
     @InjectRepository(PaymentMethod)
     private readonly paymentRepo: Repository<PaymentMethod>,
+    @InjectRepository(PayappSeller)
+    private readonly sellerRepo: Repository<PayappSeller>,
     @InjectRepository(ApiKey)
     private readonly apiKeyRepo: Repository<ApiKey>,
+    private readonly paymentService: PaymentService,
   ) {}
 
   private getUserId(req: any): number {
@@ -102,6 +107,42 @@ export class ProfileController {
     return { success: true };
   }
 
+  // ── Seller Management ──────────────────────────────────────────────────
+
+  @Get('sellers')
+  @ApiOperation({ summary: '내 판매자 계정 목록' })
+  async getSellers(@Req() req: any) {
+    const userId = this.getUserId(req);
+    return this.sellerRepo.find({ where: { userId, isActive: true } });
+  }
+
+  @Post('sellers')
+  @ApiOperation({ summary: '판매자 계정 등록' })
+  async registerSeller(@Req() req: any, @Body() body: any) {
+    const userId = this.getUserId(req);
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+    return this.paymentService.registerSeller(user, body);
+  }
+
+  @Post('sellers/check-id')
+  @ApiOperation({ summary: '판매자 아이디 중복 확인' })
+  async checkSellerId(@Body('sellerId') sellerId: string) {
+    if (!sellerId) throw new BadRequestException('아이디를 입력해주세요.');
+    return this.paymentService.checkSellerId(sellerId);
+  }
+
+  @Delete('sellers/:id')
+  @ApiOperation({ summary: '판매자 계정 삭제' })
+  async deleteSeller(@Req() req: any, @Param('id') id: number) {
+    const userId = this.getUserId(req);
+    const seller = await this.sellerRepo.findOneBy({ id, userId });
+    if (!seller) throw new NotFoundException('판매자 계정을 찾을 수 없습니다.');
+    seller.isActive = false;
+    await this.sellerRepo.save(seller);
+    return { success: true };
+  }
+
   // ── Payment Registration ────────────────────────────────────────────────
 
   @Get('payments')
@@ -115,16 +156,27 @@ export class ProfileController {
   @ApiOperation({ summary: '결제 수단 등록' })
   async registerPayment(
     @Req() req: any,
-    @Body() body: { cardNo: string; cardName: string; billingKey: string },
+    @Body() body: { cardNo: string; expMonth: string; expYear: string; cardPw: string; buyerAuthNo: string },
   ) {
     const userId = this.getUserId(req);
-    const payment = this.paymentRepo.create({
-      userId,
-      cardNo: body.cardNo,
-      cardName: body.cardName,
-      billingKey: body.billingKey,
-      isActive: true,
-    });
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+    
+    return this.paymentService.registerCard(user, body);
+  }
+
+  @Patch('payments/:id')
+  @ApiOperation({ summary: '결제 수단 정보 수정' })
+  async updatePayment(
+    @Req() req: any,
+    @Param('id') id: number,
+    @Body('cardName') cardName: string,
+  ) {
+    const userId = this.getUserId(req);
+    const payment = await this.paymentRepo.findOneBy({ id, userId });
+    if (!payment) throw new NotFoundException('결제 수단을 찾을 수 없습니다.');
+    
+    payment.cardName = cardName;
     return this.paymentRepo.save(payment);
   }
 
@@ -137,6 +189,10 @@ export class ProfileController {
     const userId = this.getUserId(req);
     const payment = await this.paymentRepo.findOneBy({ id, userId });
     if (!payment) throw new NotFoundException('결제 수단을 찾을 수 없습니다.');
+    
+    // payapp에서도 삭제 처리
+    await this.paymentService.deleteCard(payment);
+
     payment.isActive = false;
     await this.paymentRepo.save(payment);
     return { success: true };

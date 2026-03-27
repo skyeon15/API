@@ -1,10 +1,10 @@
 import { Controller, Get, Post, Put, Delete, Patch, Body, Param, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
-import { ApiTags, ApiOperation, ApiBearerAuth, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiHeader, ApiQuery, ApiParam, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiHeader, ApiQuery, ApiParam, ApiBody, ApiResponse, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { AlimtalkService } from './alimtalk.service.js';
 import { TemplateType } from './entities/template.entity.js';
 import { Service } from '../common/decorators/service.decorator.js';
-import { ApiKeyGuard } from '../common/guards/api-key.guard.js';
+import { ApiKeyOrSessionGuard } from '../common/guards/api-key-or-session.guard.js';
 import { CurrentApiKey } from '../common/decorators/api-key.decorator.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
 
@@ -14,22 +14,16 @@ import { ApiKey } from '../admin/entities/api-key.entity.js';
 @ApiUnauthorizedResponse({ description: 'API 키가 없거나 형식이 올바르지 않아요.' })
 @ApiForbiddenResponse({ description: '이 API 키는 해당 서비스에 대한 접근 권한이 없어요.' })
 @Controller('alimtalk')
-@UseGuards(ApiKeyGuard)
+@UseGuards(ApiKeyOrSessionGuard)
 @Service('alimtalk')
 export class AlimtalkController {
   constructor(private readonly alimtalkService: AlimtalkService) {}
 
-  private ctx(apiKey: ApiKey, req: Request) {
-    return { apiKeyId: apiKey?.id, userId: apiKey?.userId ?? undefined, ip: req.ip };
+  private ctx(apiKey: ApiKey | undefined, req: Request) {
+    return { apiKeyId: apiKey?.id, userId: apiKey?.userId ?? req['userId'] ?? undefined, ip: req.ip };
   }
 
   // ── 채널 ──────────────────────────────────────────────────────────────────
-
-  @Get('channels')
-  @ApiOperation({ summary: '채널 목록 조회', description: 'DB에 등록된 알림톡 채널 목록이에요.' })
-  getChannels() {
-    return this.alimtalkService.getChannels();
-  }
 
   @Get('categories')
   @ApiOperation({ summary: '카카오 카테고리 목록', description: '채널 등록 시 필요한 카카오 비즈니스 카테고리 목록이에요.' })
@@ -37,43 +31,26 @@ export class AlimtalkController {
     return this.alimtalkService.getCategories();
   }
 
-  @Post('channels/auth')
-  @ApiOperation({ summary: '채널 인증 요청', description: '카카오 채널 등록을 위한 인증번호를 요청해요. 입력한 전화번호로 전송돼요.' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['plusId', 'phone'],
-      properties: {
-        plusId: { type: 'string', description: '카카오 채널 ID', example: '@파란대나무숲' },
-        phone: { type: 'string', description: '인증번호를 받을 전화번호', example: '01012345678' },
-      },
-    },
-  })
-  requestChannelAuth(@Body() body: { plusId: string; phone: string }) {
-    return this.alimtalkService.requestChannelAuth(body.plusId, body.phone);
-  }
-
   @Post('channels')
-  @ApiOperation({ summary: '채널 추가', description: '인증번호를 사용해 새 카카오 채널을 등록하고 DB에 저장해요.' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['plusId', 'authNum', 'phone', 'categoryCode', 'name'],
-      properties: {
-        plusId: { type: 'string', example: '@파란대나무숲' },
-        authNum: { type: 'string', description: '전송받은 인증번호', example: '123456' },
-        phone: { type: 'string', example: '01012345678' },
-        categoryCode: { type: 'string', description: '카카오 카테고리 코드', example: '001001' },
-        name: { type: 'string', description: '채널 별칭', example: '파란대나무숲' },
-      },
-    },
-  })
+  @ApiOperation({ summary: '채널 등록', description: '전송받은 인증번호를 입력하여 채널을 최종 등록해요.' })
   addChannel(
     @Body() body: { plusId: string; authNum: string; phone: string; categoryCode: string; name: string },
     @CurrentApiKey() apiKey: ApiKey,
     @Req() req: Request,
   ) {
     return this.alimtalkService.addChannel(body, this.ctx(apiKey, req));
+  }
+
+  @Post('channels/auth')
+  @ApiOperation({ summary: '채널 인증 요청', description: '카카오 채널 등록을 위한 인증번호를 요청해요. 입력한 전화번호로 전송돼요.' })
+  requestChannelAuth(@Body() body: { plusId: string; phone: string }) {
+    return this.alimtalkService.requestChannelAuth(body.plusId, body.phone);
+  }
+
+  @Get('channels')
+  @ApiOperation({ summary: '채널 목록 조회' })
+  getChannels(@CurrentApiKey() apiKey: ApiKey, @Req() req: Request) {
+    return this.alimtalkService.getChannels(this.ctx(apiKey, req).userId);
   }
 
   @Patch('channels/:id')
@@ -102,19 +79,19 @@ export class AlimtalkController {
   @Get('templates')
   @ApiOperation({ summary: '템플릿 목록 조회', description: 'DB에 저장된 템플릿 목록이에요.' })
   @ApiQuery({ name: 'channelId', required: false, description: '채널 ID로 필터링', type: Number })
-  getTemplates(@Query('channelId') channelId?: number) {
-    return this.alimtalkService.getTemplates(channelId);
+  getTemplates(@CurrentApiKey() apiKey: ApiKey, @Req() req: Request, @Query('channelId') channelId?: number) {
+    return this.alimtalkService.getTemplates(this.ctx(apiKey, req).userId, channelId);
   }
 
   @Get('templates/live')
-  @ApiOperation({ summary: '템플릿 실시간 조회', description: '알리고 API에서 최신 템플릿 목록을 직접 조회해요.' })
+  @ApiOperation({ summary: '템플릿 실시간 조회', description: '최신 템플릿 목록을 직접 조회해요.' })
   @ApiQuery({ name: 'senderKey', required: false, description: 'SenderKey로 필터링' })
   getLiveTemplates(@Query('senderKey') senderKey?: string) {
     return this.alimtalkService.getLiveTemplates(senderKey);
   }
 
   @Post('templates/sync')
-  @ApiOperation({ summary: '템플릿 동기화', description: '알리고 API의 최신 템플릿 정보를 DB에 동기화해요.' })
+  @ApiOperation({ summary: '템플릿 동기화', description: '최신 템플릿 정보를 DB에 동기화해요.' })
   @ApiBody({
     schema: {
       type: 'object',
@@ -169,6 +146,17 @@ export class AlimtalkController {
     return this.alimtalkService.createTemplate(body, this.ctx(apiKey, req));
   }
 
+  @Post('templates/:code/request')
+  @ApiOperation({ summary: '템플릿 검수 요청', description: '카카오 비즈니스에 템플릿 검수를 요청해요.' })
+  @ApiParam({ name: 'code', description: '템플릿 코드', example: 'UC_0257' })
+  requestInspection(
+    @Param('code') code: string,
+    @CurrentApiKey() apiKey: ApiKey,
+    @Req() req: Request,
+  ) {
+    return this.alimtalkService.requestInspection(code, this.ctx(apiKey, req));
+  }
+
   @Put('templates/:code')
   @ApiOperation({ summary: '템플릿 수정' })
   @ApiParam({ name: 'code', description: '템플릿 코드', example: 'UC_0257' })
@@ -204,17 +192,6 @@ export class AlimtalkController {
     @Req() req: Request,
   ) {
     return this.alimtalkService.deleteTemplate(code, type, this.ctx(apiKey, req));
-  }
-
-  @Post('templates/:code/request')
-  @ApiOperation({ summary: '템플릿 검수 요청', description: '카카오 비즈니스에 템플릿 검수를 요청해요.' })
-  @ApiParam({ name: 'code', description: '템플릿 코드', example: 'UC_0257' })
-  requestInspection(
-    @Param('code') code: string,
-    @CurrentApiKey() apiKey: ApiKey,
-    @Req() req: Request,
-  ) {
-    return this.alimtalkService.requestInspection(code, this.ctx(apiKey, req));
   }
 
   // ── 발송 ──────────────────────────────────────────────────────────────────
@@ -264,6 +241,8 @@ export class AlimtalkController {
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, description: '최대 100' })
   getHistory(
+    @CurrentApiKey() apiKey: ApiKey,
+    @Req() req: Request,
     @Query('channelId') channelId?: number,
     @Query('templateCode') templateCode?: string,
     @Query('receiverPhone') receiverPhone?: string,
@@ -277,13 +256,14 @@ export class AlimtalkController {
       from: from ? new Date(from) : undefined,
       to: to ? new Date(to) : undefined,
       page, limit,
+      userId: this.ctx(apiKey, req).userId,
     });
   }
 
   @Get('history/:id/result')
-  @ApiOperation({ summary: '발송 결과 조회', description: '알리고 API에서 실시간으로 발송 결과를 조회하고 DB에 저장해요.' })
+  @ApiOperation({ summary: '발송 결과 조회', description: '실시간으로 발송 결과를 조회하고 DB에 저장해요.' })
   @ApiParam({ name: 'id', description: '메시지 ID' })
-  getResult(@Param('id') id: number) {
-    return this.alimtalkService.getResult(id);
+  getResult(@Param('id') id: number, @CurrentApiKey() apiKey: ApiKey, @Req() req: Request) {
+    return this.alimtalkService.getResult(id, this.ctx(apiKey, req).userId);
   }
 }
