@@ -1,0 +1,23 @@
+{
+  "name": "파란대나무숲",
+  "short_name": "PDS",
+  "description": "종합 콘텐츠 제작 기업",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "any",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#3B82F6",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "start_url": "/",
+  "scope": "/"
+}

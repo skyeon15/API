@@ -17,21 +17,34 @@ services:
   app:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: apps/api/Dockerfile
     container_name: pds-api-app
     restart: always
     ports:
-      - "${PORT:-1015}:${PORT:-1015}"
+      - "${PORT:-10151}:${PORT:-10151}"
     environment:
       DB_HOST: db
-      DB_PORT: 1017
+      DB_PORT: 5432
       DB_NAME: ${DB_NAME:-pds_api}
       DB_USER: ${DB_USER:-pds_user}
       DB_PASSWORD: ${DB_PASSWORD:-pds_password}
-      PORT: ${PORT:-1015}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      PORT: ${PORT:-10151}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:10150}
     depends_on:
       - db
+    networks:
+      - pds-network
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    container_name: pds-web-app
+    restart: always
+    ports:
+      - "10150:10150"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:10151
     networks:
       - pds-network
 

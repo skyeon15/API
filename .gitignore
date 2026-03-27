@@ -1,7 +1,7 @@
 # compiled output
-/dist
-/node_modules
-/build
+dist
+node_modules
+build
 
 # Logs
 logs
@@ -31,12 +31,8 @@ Desktop.ini
 !LICENSE.md
 !LICENSE
 
-# dotenv environment variable files
-.env
-.env.development.local
-.env.test.local
-.env.production.local
-.env.local
+.env*
+!.env.example
 
 # Runtime data
 pids
@@ -49,4 +45,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # AdminJS generated bundle
 legacy*
-/data
+data

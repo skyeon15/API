@@ -1,0 +1,85 @@
+'use client';
+
+import React, { createContext, useContext, useState, useEffect } from 'react';
+
+interface User {
+  id: number;
+  name: string;
+  phone: string;
+  company?: string;
+}
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  login: (phone: string, code: string) => Promise<void>;
+  logout: () => Promise<void>;
+  refresh: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/me`, {
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+      });
+      if (res.ok) {
+        setUser(await res.json());
+      } else {
+        setUser(null);
+      }
+    } catch (error) {
+      setUser(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const login = async (phone: string, code: string) => {
+    const res = await fetch(`${API_BASE}/auth/verify-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, code }),
+      credentials: 'include',
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || '로그인 실패');
+    }
+    setUser(await res.json());
+  };
+
+  const logout = async () => {
+    await fetch(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    setUser(null);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};

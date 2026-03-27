@@ -1,97 +1,22 @@
 {
-  "name": "pds-api",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "name": "pds-monorepo",
   "private": true,
-  "type": "module",
-  "license": "UNLICENSED",
+  "packageManager": "npm@11.12.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "nest start",
-    "start:dev": "kill-port 1015 && nest start --watch",
-    "start:debug": "kill-port 1015 && nest start --debug --watch",
-    "start:prod": "node dist/main",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
-    "typeorm": "node --no-warnings=ExperimentalWarning --loader ts-node/esm ./node_modules/typeorm/cli.js",
-    "migration:generate": "npm run typeorm -- migration:generate -d src/data-source.ts",
-    "migration:run": "npm run typeorm -- migration:run -d src/data-source.ts",
-    "migration:revert": "npm run typeorm -- migration:revert -d src/data-source.ts",
-    "migration:create": "npm run typeorm -- migration:create"
-  },
-  "dependencies": {
-    "@adminjs/express": "^6.1.1",
-    "@adminjs/nestjs": "^7.0.0",
-    "@adminjs/typeorm": "^5.0.1",
-    "@nestjs/axios": "^4.0.1",
-    "@nestjs/common": "^11.0.1",
-    "@nestjs/core": "^11.0.1",
-    "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/serve-static": "^5.0.4",
-    "@nestjs/swagger": "^11.2.6",
-    "@nestjs/typeorm": "^11.0.0",
-    "@scalar/nestjs-api-reference": "^1.1.5",
-    "adminjs": "^7.8.17",
-    "axios": "^1.13.6",
-    "cheerio": "^1.2.0",
-    "dotenv": "^17.3.1",
-    "express-formidable": "^1.2.0",
-    "express-session": "^1.19.0",
-    "node-ical": "^0.25.6",
-    "path": "^0.12.7",
-    "pg": "^8.13.1",
-    "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1",
-    "typeorm": "^0.3.20",
-    "zod": "^4.3.6"
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "lint": "turbo lint",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "start:api": "npm run dev --filter=api",
+    "start:web": "npm run dev --filter=web",
+    "migration:run": "npm run migration:run --workspace=apps/api"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
-    "@eslint/js": "^9.18.0",
-    "@nestjs/cli": "^11.0.0",
-    "@nestjs/schematics": "^11.0.0",
-    "@nestjs/testing": "^11.0.1",
-    "@types/express": "^5.0.0",
-    "@types/jest": "^30.0.0",
-    "@types/node": "^22.10.7",
-    "@types/supertest": "^6.0.2",
-    "eslint": "^9.18.0",
-    "eslint-config-prettier": "^10.0.1",
-    "eslint-plugin-prettier": "^5.2.2",
-    "globals": "^16.0.0",
-    "jest": "^30.0.0",
-    "kill-port": "^2.0.1",
-    "prettier": "^3.4.2",
-    "source-map-support": "^0.5.21",
-    "supertest": "^7.0.0",
-    "ts-jest": "^29.2.5",
-    "ts-loader": "^9.5.2",
-    "ts-node": "^10.9.2",
-    "tsconfig-paths": "^4.2.0",
-    "typescript": "^5.7.3",
-    "typescript-eslint": "^8.20.0"
-  },
-  "jest": {
-    "moduleFileExtensions": [
-      "js",
-      "json",
-      "ts"
-    ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
-    ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node"
+    "turbo": "^2.0.0",
+    "prettier": "^3.4.2"
   }
 }
