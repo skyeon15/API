@@ -12,9 +12,21 @@ import { LostarkModule } from './lostark/lostark.module.js';
 import { CommonModule } from './common/common.module.js';
 import { NeisModule } from './neis/neis.module.js';
 import { InfoModule } from './info/info.module.js';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { ApiKey } from './admin/entities/api-key.entity.js';
 
 @Module({
   imports: [
+    TypeOrmModule.forRoot({
+      type: 'postgres',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      username: process.env.DB_USER || 'pds_user',
+      password: process.env.DB_PASSWORD || 'pds_password',
+      database: process.env.DB_NAME || 'pds_api',
+      entities: [ApiKey],
+      synchronize: true, // 개발 환경에서는 true, 운영에서는 migration 추천
+    }),
     AdminPanelModule,
     WruaModule,
     LostarkModule,

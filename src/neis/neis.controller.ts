@@ -1,9 +1,40 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, UseGuards } from '@nestjs/common';
 import { NeisService } from './neis.service.js';
-import { ApiOperation, ApiParam, ApiTags, ApiResponse } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiTags, ApiResponse, ApiBearerAuth, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiHeader } from '@nestjs/swagger';
+import { Service } from '../common/decorators/service.decorator.js';
+import { ApiKeyGuard } from '../common/guards/api-key.guard.js';
 
 @ApiTags('학교')
+@ApiBearerAuth('api-key')
+@ApiHeader({
+  name: 'Authorization',
+  description: 'Bearer {API_KEY} 형태로 입력해 주세요.',
+  required: true,
+  example: 'Bearer YOUR_SECRET_TOKEN'
+})
+@ApiUnauthorizedResponse({
+  description: 'API 키가 없거나 형식이 올바르지 않아요.',
+  schema: {
+    example: {
+      statusCode: 401,
+      message: 'API 키가 없거나 형식이 올바르지 않아요.',
+      error: 'Unauthorized'
+    }
+  }
+})
+@ApiForbiddenResponse({
+  description: '이 API 키는 해당 서비스에 대한 접근 권한이 없어요.',
+  schema: {
+    example: {
+      statusCode: 403,
+      message: '해당 서비스(\'neis\')에 대한 접근 권한이 없는 API 키예요.',
+      error: 'Forbidden'
+    }
+  }
+})
 @Controller('school-lunch')
+@UseGuards(ApiKeyGuard)
+@Service('neis')
 export class NeisController {
   constructor(private readonly neisService: NeisService) {}
 

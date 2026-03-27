@@ -1,11 +1,42 @@
-import { Controller, Get, Param, Req, Res, Redirect, Ip, Logger } from '@nestjs/common';
+import { Controller, Get, Param, Req, Res, Redirect, Ip, Logger, UseGuards } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { TimeService } from './time.service.js';
 import axios from 'axios';
-import { ApiOperation, ApiParam, ApiTags, ApiResponse } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiTags, ApiResponse, ApiBearerAuth, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiHeader } from '@nestjs/swagger';
+import { Service } from './decorators/service.decorator.js';
+import { ApiKeyGuard } from './guards/api-key.guard.js';
 
 @ApiTags('공통')
+@ApiBearerAuth('api-key')
+@ApiHeader({
+  name: 'Authorization',
+  description: 'Bearer {API_KEY} 형태로 입력해 주세요.',
+  required: true,
+  example: 'Bearer YOUR_SECRET_TOKEN'
+})
+@ApiUnauthorizedResponse({
+  description: 'API 키가 없거나 형식이 올바르지 않아요.',
+  schema: {
+    example: {
+      statusCode: 401,
+      message: 'API 키가 없거나 형식이 올바르지 않아요.',
+      error: 'Unauthorized'
+    }
+  }
+})
+@ApiForbiddenResponse({
+  description: '이 API 키는 해당 서비스에 대한 접근 권한이 없어요.',
+  schema: {
+    example: {
+      statusCode: 403,
+      message: '해당 서비스(\'common\')에 대한 접근 권한이 없는 API 키예요.',
+      error: 'Forbidden'
+    }
+  }
+})
 @Controller()
+@UseGuards(ApiKeyGuard)
+@Service('common')
 export class CommonController {
   private readonly logger = new Logger(CommonController.name);
 
@@ -36,6 +67,7 @@ export class CommonController {
     summary: '서버 시간 확인',
     description: '파란대나무숲 서버의 현재 시간을 바로 확인할 수 있어요.'
   })
+  @ApiResponse({ status: 302, description: '/time/bbforest.net 으로 리다이렉트해요.' })
   getTimeDefault() { }
 
   @Get('time/:url')
@@ -110,12 +142,21 @@ export class CommonController {
   @Get('redirect/*path')
   @ApiOperation({
     summary: 'URL 리다이렉트',
-    description: '페이지 이동용 리다이렉트 엔드포인트에요.'
+    description: '페이지 이동용 리다이렉트 엔드포인트예요. `http://` 또는 `https://`로 시작하는 URL만 지원해요.'
+  })
+  @ApiParam({
+    name: 'path',
+    description: '리다이렉트할 대상 URL이에요. 반드시 http:// 또는 https://로 시작해야 해요.',
+    required: true,
+    example: 'https://bbforest.net'
   })
   @ApiResponse({
     status: 302,
     description: '지정한 URL로 성공적으로 이동시켜 드려요.',
-    schema: { example: 'https://bbforest.net' }
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'URL 형식이 올바르지 않을 때 오류 메시지를 텍스트로 반환해요.',
   })
   handleRedirect(@Req() req: Request, @Res() res: Response) {
     const url = req.originalUrl.substring(10);

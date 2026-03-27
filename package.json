@@ -30,6 +30,7 @@
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/serve-static": "^5.0.4",
     "@nestjs/swagger": "^11.2.6",
+    "@nestjs/typeorm": "^11.0.0",
     "@scalar/nestjs-api-reference": "^1.1.5",
     "adminjs": "^7.8.17",
     "axios": "^1.13.6",
@@ -39,8 +40,10 @@
     "express-session": "^1.19.0",
     "node-ical": "^0.25.6",
     "path": "^0.12.7",
+    "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "typeorm": "^0.3.20",
     "zod": "^4.3.6"
   },
   "devDependencies": {

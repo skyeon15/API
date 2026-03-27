@@ -1,9 +1,40 @@
-import { Controller, Get, Post, Query, Body, Ip } from '@nestjs/common';
+import { Controller, Get, Post, Query, Body, Ip, UseGuards } from '@nestjs/common';
 import { WruaService } from './wrua.service.js';
-import { ApiTags, ApiOperation, ApiQuery, ApiBody, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery, ApiBody, ApiResponse, ApiBearerAuth, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiHeader } from '@nestjs/swagger';
+import { Service } from '../common/decorators/service.decorator.js';
+import { ApiKeyGuard } from '../common/guards/api-key.guard.js';
 
 @ApiTags('일정관리')
+@ApiBearerAuth('api-key')
+@ApiHeader({
+  name: 'Authorization',
+  description: 'Bearer {API_KEY} 형태로 입력해 주세요.',
+  required: true,
+  example: 'Bearer YOUR_SECRET_TOKEN'
+})
+@ApiUnauthorizedResponse({
+  description: 'API 키가 없거나 형식이 올바르지 않아요.',
+  schema: {
+    example: {
+      statusCode: 401,
+      message: 'API 키가 없거나 형식이 올바르지 않아요.',
+      error: 'Unauthorized'
+    }
+  }
+})
+@ApiForbiddenResponse({
+  description: '이 API 키는 해당 서비스에 대한 접근 권한이 없어요.',
+  schema: {
+    example: {
+      statusCode: 403,
+      message: '해당 서비스(\'wrua\')에 대한 접근 권한이 없는 API 키예요.',
+      error: 'Forbidden'
+    }
+  }
+})
 @Controller('wrua')
+@UseGuards(ApiKeyGuard)
+@Service('wrua')
 export class WruaController {
   constructor(private readonly wruaService: WruaService) { }
 
@@ -68,10 +99,14 @@ export class WruaController {
     example: '광현'
   })
   @ApiBody({
+    description: '함께 일정을 보낸 친구의 이름을 입력하는 객체예요.',
     schema: {
-      example: { withName: '에케' },
-      description: '함께 일정을 보낸 친구의 이름을 입력하는 객체예요.'
-    }
+      type: 'object',
+      required: ['withName'],
+      properties: {
+        withName: { type: 'string', description: '함께한 일정을 검색할 친구의 이름이에요.', example: '에케' },
+      },
+    },
   })
   @ApiResponse({
     status: 200,
@@ -111,7 +146,14 @@ export class WruaController {
   })
   @ApiResponse({
     status: 403,
-    description: '다른 사람의 추억은 볼 수 없어요.'
+    description: '다른 사람의 추억은 볼 수 없어요.',
+    schema: {
+      example: {
+        statusCode: 403,
+        message: '다른 사람의 추억은 볼 수 없어요.',
+        error: 'Forbidden'
+      }
+    }
   })
   async searchTogether(
     @Query('name') calendarOwner: string,

@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: pds-api-db
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-pds_api}
+      POSTGRES_USER: ${DB_USER:-pds_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-pds_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "1017:5432"
+    networks:
+      - pds-network
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: pds-api-app
+    restart: always
+    ports:
+      - "${PORT:-1015}:${PORT:-1015}"
+    environment:
+      DB_HOST: db
+      DB_PORT: 1017
+      DB_NAME: ${DB_NAME:-pds_api}
+      DB_USER: ${DB_USER:-pds_user}
+      DB_PASSWORD: ${DB_PASSWORD:-pds_password}
+      PORT: ${PORT:-1015}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+    depends_on:
+      - db
+    networks:
+      - pds-network
+
+volumes:
+  pgdata:
+
+
+networks:
+  pds-network:
+    driver: bridge

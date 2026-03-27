@@ -1,10 +1,41 @@
-import { Controller, Get, Query, Req } from '@nestjs/common';
+import { Controller, Get, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { InfoService } from './info.service.js';
-import { ApiOperation, ApiQuery, ApiTags, ApiResponse, ApiProduces } from '@nestjs/swagger';
+import { ApiOperation, ApiQuery, ApiTags, ApiResponse, ApiProduces, ApiBearerAuth, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiHeader } from '@nestjs/swagger';
+import { Service } from '../common/decorators/service.decorator.js';
+import { ApiKeyGuard } from '../common/guards/api-key.guard.js';
 
 @ApiTags('정보조회')
+@ApiBearerAuth('api-key')
+@ApiHeader({
+  name: 'Authorization',
+  description: 'Bearer {API_KEY} 형태로 입력해 주세요.',
+  required: true,
+  example: 'Bearer YOUR_SECRET_TOKEN'
+})
+@ApiUnauthorizedResponse({
+  description: 'API 키가 없거나 형식이 올바르지 않아요.',
+  schema: {
+    example: {
+      statusCode: 401,
+      message: 'API 키가 없거나 형식이 올바르지 않아요.',
+      error: 'Unauthorized'
+    }
+  }
+})
+@ApiForbiddenResponse({
+  description: '이 API 키는 해당 서비스에 대한 접근 권한이 없어요.',
+  schema: {
+    example: {
+      statusCode: 403,
+      message: '해당 서비스(\'info\')에 대한 접근 권한이 없는 API 키예요.',
+      error: 'Forbidden'
+    }
+  }
+})
 @Controller()
+@UseGuards(ApiKeyGuard)
+@Service('info')
 export class InfoController {
   constructor(private readonly infoService: InfoService) { }
 

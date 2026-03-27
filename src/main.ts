@@ -1,8 +1,11 @@
+import 'reflect-metadata';
+import './admin-setup.js';
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger'; // 추가
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { AppModule } from './app.module.js';
+import { SERVICE_REGISTRY } from './common/service-registry.js';
 
 async function bootstrap() {
   console.log('[BOOTSTRAP] Starting Nest application...');
@@ -23,16 +26,13 @@ async function bootstrap() {
   (app as any).set('trust proxy', true);
 
   // Swagger 설정 시작
-  const config = new DocumentBuilder()
+  const builder = new DocumentBuilder()
     .setTitle('파란대나무숲 API')
     .setDescription('파란대나무숲에서 제공하는 다양한 API 서비스의 기술 문서예요! 각 엔드포인트에 대한 상세한 설명과 테스트 방법을 확인할 수 있어요.')
     .setVersion('1.0')
-    .addTag('공통')
-    .addTag('정보조회')
-    .addTag('학교')
-    .addTag('게임')
-    .addTag('일정관리')
-    .build();
+    .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'API 키를 입력하세요.' }, 'api-key');
+  SERVICE_REGISTRY.forEach(({ label }) => builder.addTag(label));
+  const config = builder.build();
   const document = SwaggerModule.createDocument(app, config);
   app.use(
     '/api',
