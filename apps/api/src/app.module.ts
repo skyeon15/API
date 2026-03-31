@@ -32,10 +32,10 @@ import { AlimtalkMessage } from './alimtalk/entities/message.entity.js';
     TypeOrmModule.forRootAsync({
       useFactory: () => {
         const logger = new Logger('Database');
-        const host = process.env.DB_HOST || 'localhost';
-        const port = parseInt(process.env.DB_PORT || '5432', 10);
-        const database = process.env.DB_NAME || 'pds_api';
-        const username = process.env.DB_USER || 'pds_user';
+        const host = process.env.API_DB_HOST || 'localhost';
+        const port = parseInt(process.env.API_DB_PORT || '5432', 10);
+        const database = process.env.API_DB_NAME || 'pds_api';
+        const username = process.env.API_DB_USER || 'pds_user';
 
         logger.log(`데이터베이스 연결을 시도합니다...`);
         logger.log(`언결 설정: Host=${host}, Port=${port}, Database=${database}, User=${username}`);
@@ -45,7 +45,7 @@ import { AlimtalkMessage } from './alimtalk/entities/message.entity.js';
           host,
           port,
           username,
-          password: process.env.DB_PASSWORD || 'pds_password',
+          password: process.env.API_DB_PASSWORD || 'pds_password',
           database,
           entities: [
             ApiKey,

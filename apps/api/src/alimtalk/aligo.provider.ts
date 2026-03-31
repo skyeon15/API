@@ -9,8 +9,8 @@ export class AligoProvider {
 
   private get credentials() {
     return {
-      apikey: process.env.ALIGO_API_KEY,
-      userid: process.env.ALIGO_USER_ID,
+      apikey: process.env.API_ALIGO_API_KEY,
+      userid: process.env.API_ALIGO_USER_ID,
     };
   }
 
@@ -44,7 +44,7 @@ export class AligoProvider {
       tpl_code: params.templateCode,
       receiver_1: params.receiverPhone.replace(/-/g, ''),
       message_1: params.content,
-      failover: process.env.ALIGO_FAILOVER === 'N' ? 'N' : 'Y',
+      failover: process.env.API_ALIGO_FAILOVER === 'N' ? 'N' : 'Y',
     };
     if (params.title) payload.subject_1 = params.title;
     if (params.scheduledAt) payload.sendtime = params.scheduledAt;

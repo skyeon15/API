@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import ChannelManagement from './_components/channel-management';
 import TemplateManagement from './_components/template-management';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = process.env.API_NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
 
 type Tab = 'channels' | 'templates';
 

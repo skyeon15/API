@@ -8,7 +8,7 @@ export function GET() {
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
-    <script id="api-reference" data-url="${process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net'}/docs/openapi.json"></script>
+    <script id="api-reference" data-url="${process.env.API_NEXT_PUBLIC_API_URL || 'https://api.bbforest.net'}/docs/openapi.json"></script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>`;

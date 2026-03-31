@@ -7,7 +7,37 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module.js';
 import { SERVICE_REGISTRY } from './common/service-registry.js';
 
+const REQUIRED_ENV_VARS = [
+  'API_DB_HOST', 'API_DB_PORT', 'API_DB_NAME', 'API_DB_USER', 'API_DB_PASSWORD',
+  'API_JWT_SECRET',
+  'API_REDIS_HOST', 'API_REDIS_PORT',
+];
+
+const OPTIONAL_ENV_VARS = [
+  'API_ALIGO_API_KEY', 'API_ALIGO_USER_ID', 'API_ALIGO_FAILOVER',
+  'API_PAYAPP_USERID', 'API_PAYAPP_LINKKEY',
+];
+
+function checkEnvVars() {
+  const missing = REQUIRED_ENV_VARS.filter((key) => !process.env[key]);
+  const emptyOptional = OPTIONAL_ENV_VARS.filter((key) => !process.env[key]);
+
+  if (missing.length > 0) {
+    console.warn('='.repeat(60));
+    console.warn('[환경변수 경고] 다음 필수 환경변수가 설정되지 않았습니다:');
+    missing.forEach((key) => console.warn(`  - ${key}`));
+    console.warn('.env 파일을 확인해 주세요. 기본값으로 동작하거나 오류가 발생할 수 있습니다.');
+    console.warn('='.repeat(60));
+  }
+
+  if (emptyOptional.length > 0) {
+    console.info('[환경변수 정보] 다음 선택적 환경변수가 설정되지 않았습니다 (해당 기능 비활성화됨):');
+    emptyOptional.forEach((key) => console.info(`  - ${key}`));
+  }
+}
+
 async function bootstrap() {
+  checkEnvVars();
   console.log('[BOOTSTRAP] Starting Nest application...');
   const app = await NestFactory.create(AppModule);
 
@@ -33,7 +63,7 @@ async function bootstrap() {
     .setTitle('파란대나무숲 API')
     .setDescription('파란대나무숲에서 제공하는 다양한 API 서비스의 기술 문서예요!')
     .setVersion('1.0')
-    .addServer(`http://localhost:${process.env.PORT || 10151}`, '로컬 개발 서버')
+    .addServer(`http://localhost:${process.env.API_PORT || 10151}`, '로컬 개발 서버')
     .addServer('https://api.bbforest.net', '운영 서버')
     .addBearerAuth({ type: 'http', scheme: 'bearer', description: 'API 키를 입력하세요.' }, 'api-key');
   SERVICE_REGISTRY.forEach(({ label }) => builder.addTag(label));
@@ -47,7 +77,7 @@ async function bootstrap() {
 
   // Swagger 설정 끝
 
-  const port = process.env.PORT || 10151;
+  const port = process.env.API_PORT || 10151;
   console.log(`[부트스트랩] 포트 ${port}번에서 서버 연결을 시도합니다...`);
   await app.listen(port);
   console.log(`[부트스트랩] API 서버가 실행되었습니다: http://localhost:${port}`);

@@ -39,7 +39,7 @@ export class PaymentService {
       ceo_nm?: string;
     },
   ) {
-    const resellerid = process.env.PAYAPP_RESELLERID || process.env.PAYAPP_USERID;
+    const resellerid = process.env.API_PAYAPP_RESELLERID || process.env.API_PAYAPP_USERID;
 
     if (!resellerid) {
       throw new BadRequestException('리셀러 아이디 설정이 완료되지 않았습니다.');
@@ -103,7 +103,7 @@ export class PaymentService {
   }
 
   async checkSellerId(sellerId: string) {
-    const resellerid = process.env.PAYAPP_RESELLERID || process.env.PAYAPP_USERID;
+    const resellerid = process.env.API_PAYAPP_RESELLERID || process.env.API_PAYAPP_USERID;
 
     if (!resellerid) {
       throw new BadRequestException('리셀러 아이디 설정이 완료되지 않았습니다.');
@@ -149,8 +149,8 @@ export class PaymentService {
       buyerAuthNo: string;
     },
   ) {
-    const userid = process.env.PAYAPP_USERID;
-    const linkkey = process.env.PAYAPP_LINKKEY;
+    const userid = process.env.API_PAYAPP_USERID;
+    const linkkey = process.env.API_PAYAPP_LINKKEY;
 
     if (!userid || !linkkey) {
       throw new BadRequestException('결제 시스템 설정이 완료되지 않았습니다.');
@@ -209,8 +209,8 @@ export class PaymentService {
   }
 
   async deleteCard(payment: PaymentMethod) {
-    const userid = process.env.PAYAPP_USERID;
-    const linkkey = process.env.PAYAPP_LINKKEY;
+    const userid = process.env.API_PAYAPP_USERID;
+    const linkkey = process.env.API_PAYAPP_LINKKEY;
 
     if (!userid || !linkkey) {
       throw new BadRequestException('결제 시스템 설정이 완료되지 않았습니다.');

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = process.env.API_NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
 
 function LoginForm() {
   const [phone, setPhone] = useState('');

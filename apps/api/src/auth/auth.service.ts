@@ -29,8 +29,8 @@ export class AuthService {
 
     console.log(`[AUTH] Verification code for ${phone}: ${code}`);
 
-    const channelId = process.env.VERIFY_CHANNEL_ID;
-    const templateCode = process.env.VERIFY_TEMPLATE_CODE;
+    const channelId = process.env.API_VERIFY_CHANNEL_ID;
+    const templateCode = process.env.API_VERIFY_TEMPLATE_CODE;
 
     if (channelId && templateCode) {
       try {

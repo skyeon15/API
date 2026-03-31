@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/card';
 import ChannelWizard from './channel-wizard';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = process.env.API_NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
 
 interface Channel {
   id: number;

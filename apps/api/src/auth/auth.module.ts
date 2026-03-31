@@ -14,7 +14,7 @@ import { AlimtalkModule } from '../alimtalk/alimtalk.module.js';
     TypeOrmModule.forFeature([User, VerificationCode, RefreshToken]),
     JwtModule.registerAsync({
       useFactory: () => ({
-        secret: process.env.JWT_SECRET || 'pds-jwt-secret',
+        secret: process.env.API_JWT_SECRET || 'pds-jwt-secret',
         signOptions: { expiresIn: '15m' },
       }),
     }),

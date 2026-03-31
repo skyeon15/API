@@ -14,7 +14,7 @@ import { ApiKeyOrSessionGuard } from './guards/api-key-or-session.guard.js';
     TypeOrmModule.forFeature([ApiKey]),
     JwtModule.registerAsync({
       useFactory: () => ({
-        secret: process.env.JWT_SECRET || 'pds-jwt-secret',
+        secret: process.env.API_JWT_SECRET || 'pds-jwt-secret',
         signOptions: { expiresIn: '15m' },
       }),
     }),
