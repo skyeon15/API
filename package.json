@@ -11,8 +11,9 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "start:api": "npm run dev --filter=api",
-    "start:web": "npm run dev --filter=web",
+    "start": "turbo run start:prod --filter=api & turbo run start --filter=web",
+    "start:api": "npm run start:prod --workspace=apps/api",
+    "start:web": "npm run start --workspace=apps/web",
     "migration:run": "npm run migration:run --workspace=apps/api"
   },
   "devDependencies": {

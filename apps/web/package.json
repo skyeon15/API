@@ -31,5 +31,12 @@
     "postcss": "^8.0.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.0.0"
+  },
+  "optionalDependencies": {
+    "@tailwindcss/oxide-linux-x64-gnu": "^4.0.0",
+    "@tailwindcss/oxide-linux-x64-musl": "^4.0.0",
+    "@tailwindcss/oxide-linux-arm64-gnu": "^4.0.0",
+    "@tailwindcss/oxide-linux-arm64-musl": "^4.0.0",
+    "@tailwindcss/oxide-darwin-arm64": "^4.0.0"
   }
 }

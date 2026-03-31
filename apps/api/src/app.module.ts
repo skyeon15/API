@@ -40,6 +40,7 @@ import { AlimtalkMessage } from './alimtalk/entities/message.entity.js';
       synchronize: false,
       migrations: [join(process.cwd(), 'dist/migrations/*.js')],
       migrationsRun: true,
+      migrationsTransactionMode: 'each',
     }),
     AdminPanelModule,
     UserModule,
