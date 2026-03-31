@@ -1,5 +1,5 @@
 # Deps stage: production-only node_modules
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 COPY apps/api/package.json ./apps/api/
@@ -7,7 +7,7 @@ COPY apps/web/package.json ./apps/web/
 RUN npm ci --omit=dev
 
 # Build stage
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 COPY apps/api/package.json ./apps/api/
@@ -17,7 +17,7 @@ COPY . .
 RUN npm run build --workspace=api
 
 # Production stage
-FROM node:22-alpine AS runner
+FROM node:24-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production

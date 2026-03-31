@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { CommonController } from './common.controller.js';
 import { TimeService } from './time.service.js';
+import { RedisModule } from './redis/redis.module.js';
 
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
@@ -17,9 +18,10 @@ import { ApiKeyOrSessionGuard } from './guards/api-key-or-session.guard.js';
         signOptions: { expiresIn: '15m' },
       }),
     }),
+    RedisModule,
   ],
   controllers: [CommonController],
   providers: [TimeService, ApiKeyGuard, ApiKeyOrSessionGuard],
-  exports: [TimeService, ApiKeyGuard, ApiKeyOrSessionGuard, TypeOrmModule, JwtModule],
+  exports: [TimeService, ApiKeyGuard, ApiKeyOrSessionGuard, TypeOrmModule, JwtModule, RedisModule],
 })
 export class CommonModule {}

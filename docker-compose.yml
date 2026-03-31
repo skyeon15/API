@@ -28,10 +28,22 @@ services:
       DB_NAME: ${DB_NAME:-pds_api}
       DB_USER: ${DB_USER:-pds_user}
       DB_PASSWORD: ${DB_PASSWORD:-pds_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       PORT: ${PORT:-10151}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:10150}
     depends_on:
       - db
+      - redis
+    networks:
+      - pds-network
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: pds-api-redis
+    restart: always
+    volumes:
+      - redisdata:/data
     networks:
       - pds-network
 

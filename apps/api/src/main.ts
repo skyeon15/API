@@ -48,10 +48,23 @@ async function bootstrap() {
   // Swagger 설정 끝
 
   const port = process.env.PORT || 10151;
-  console.log(`[BOOTSTRAP] Attempting to listen on port ${port}...`);
+  console.log(`[부트스트랩] 포트 ${port}번에서 서버 연결을 시도합니다...`);
   await app.listen(port);
-  console.log(`[BOOTSTRAP] API Server is running on: http://localhost:${port}`);
+  console.log(`[부트스트랩] API 서버가 실행되었습니다: http://localhost:${port}`);
 }
+
 bootstrap().catch(err => {
-  console.error('[BOOTSTRAP] Failed to start:', err);
+  console.error('\n' + '='.repeat(50));
+  console.error('[부트스트랩 오류] 서버를 시작하는 중에 문제가 발생했습니다.');
+  console.error('-'.repeat(50));
+  console.error('오류 상세 내용:', err.message || err);
+  
+  if (err.message && err.message.includes('ECONNREFUSED')) {
+    console.error('\n[도움말] 데이터베이스 연결에 실패했습니다.');
+    console.error('1. .env 파일의 DB_HOST와 DB_PORT 설정을 확인해 주세요.');
+    console.error('2. 데이터베이스 서버가 실행 중인지 확인해 주세요.');
+    console.error('3. 네트워크 방화벽에서 해당 포트(5432 등)가 허용되어 있는지 확인해 주세요.');
+  }
+  console.error('='.repeat(50) + '\n');
+  process.exit(1);
 });

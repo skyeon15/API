@@ -1,9 +1,8 @@
 import { Injectable, Logger, InternalServerErrorException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { TimeService } from '../common/time.service.js';
 import { HttpService } from '@nestjs/axios';
+import { RedisService } from '../common/redis/redis.service.js';
 import ical from 'node-ical';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import { firstValueFrom } from 'rxjs';
 import { z } from 'zod';
 
@@ -24,7 +23,7 @@ const SearchBodySchema = z.object({
 @Injectable()
 export class WruaService {
   private readonly logger = new Logger(WruaService.name);
-  private readonly IP_STORAGE_PATH = path.join(process.cwd(), 'data', 'together_ip_names.json');
+  private readonly REDIS_KEY = 'wrua:ip_mappings';
   private readonly unlockedIps = new Set<string>();
 
   private readonly userConfig = {
@@ -40,48 +39,35 @@ export class WruaService {
 
   constructor(
     private readonly httpService: HttpService,
-    private readonly timeService: TimeService
-  ) {
-    // Ensure data directory exists
-    const dataDir = path.dirname(this.IP_STORAGE_PATH);
-    if (!fs.existsSync(dataDir)) {
-      this.logger.log(`Creating directory: ${dataDir}`);
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-  }
+    private readonly timeService: TimeService,
+    private readonly redisService: RedisService
+  ) {}
 
   // Helper: IP 매핑 로드
-  private getIpMappings(): Record<string, string> {
+  private async getIpMappings(): Promise<Record<string, string>> {
     try {
-      if (!fs.existsSync(this.IP_STORAGE_PATH)) return {};
-      return JSON.parse(fs.readFileSync(this.IP_STORAGE_PATH, 'utf8'));
+      return await this.redisService.hgetall(this.REDIS_KEY);
     } catch (e) {
-      this.logger.error('Failed to read IP mapping file:', e);
+      this.logger.error('Failed to read IP mapping from Redis:', e);
       return {};
     }
   }
 
   // Helper: IP 매핑 저장
-  private saveIpMapping(ip: string, name: string) {
+  private async saveIpMapping(ip: string, name: string) {
     try {
-      const mappings = this.getIpMappings();
-      mappings[ip] = name;
-      fs.writeFileSync(this.IP_STORAGE_PATH, JSON.stringify(mappings, null, 2), 'utf8');
+      await this.redisService.hset(this.REDIS_KEY, ip, name);
     } catch (e) {
-      this.logger.error('Failed to save IP mapping file:', e);
+      this.logger.error('Failed to save IP mapping to Redis:', e);
     }
   }
 
   // Helper: IP 매핑 삭제
-  private deleteIpMapping(ip: string) {
+  private async deleteIpMapping(ip: string) {
     try {
-      const mappings = this.getIpMappings();
-      if (mappings[ip]) {
-        delete mappings[ip];
-        fs.writeFileSync(this.IP_STORAGE_PATH, JSON.stringify(mappings, null, 2), 'utf8');
-      }
+      await this.redisService.hdel(this.REDIS_KEY, ip);
     } catch (e) {
-      this.logger.error('Failed to delete IP mapping:', e);
+      this.logger.error('Failed to delete IP mapping from Redis:', e);
     }
   }
 
@@ -206,7 +192,7 @@ export class WruaService {
 
     // Admin unlock command
     if (searchName === '001015') {
-      this.deleteIpMapping(clientIp);
+      await this.deleteIpMapping(clientIp);
       this.unlockedIps.add(clientIp);
       return {
         success: true,
@@ -217,7 +203,7 @@ export class WruaService {
     const isUnlocked = this.unlockedIps.has(clientIp);
 
     if (!isUnlocked) {
-      const ipMappings = this.getIpMappings();
+      const ipMappings = await this.getIpMappings();
       if (ipMappings[clientIp]) {
         const boundName = ipMappings[clientIp];
         if (boundName !== searchName) {
@@ -271,9 +257,9 @@ export class WruaService {
       }
 
       if (!isUnlocked) {
-        const currentMappings = this.getIpMappings();
+        const currentMappings = await this.getIpMappings();
         if (matchedEvents.length > 0 && !currentMappings[clientIp]) {
-          this.saveIpMapping(clientIp, searchName);
+          await this.saveIpMapping(clientIp, searchName);
         }
       }
 

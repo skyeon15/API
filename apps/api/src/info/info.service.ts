@@ -1,27 +1,29 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { TimeService } from '../common/time.service.js';
+import { RedisService } from '../common/redis/redis.service.js';
 import axios from 'axios';
 import * as cheerio from 'cheerio';
-import * as fs from 'fs';
-import * as path from 'path';
 
 @Injectable()
 export class InfoService implements OnModuleInit {
   private readonly logger = new Logger(InfoService.name);
   private covidData: any = null;
-  private readonly covidFilePath = path.join(process.cwd(), 'data', 'covid19.json');
+  private readonly REDIS_KEY = 'info:covid_data';
 
-  constructor(private readonly timeService: TimeService) { }
+  constructor(
+    private readonly timeService: TimeService,
+    private readonly redisService: RedisService
+  ) { }
 
   async onModuleInit() {
-    this.loadCovidData();
+    await this.loadCovidData();
   }
 
-  private loadCovidData() {
+  private async loadCovidData() {
     try {
-      if (fs.existsSync(this.covidFilePath)) {
-        const fileContent = fs.readFileSync(this.covidFilePath, 'utf8');
-        this.covidData = JSON.parse(fileContent);
+      const cached = await this.redisService.get(this.REDIS_KEY);
+      if (cached) {
+        this.covidData = JSON.parse(cached);
       } else {
         this.covidData = {
           datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss'),
@@ -30,11 +32,7 @@ export class InfoService implements OnModuleInit {
           deceased: [0, 0],
           raw_time: 0
         };
-        // Ensure data directory exists
-        if (!fs.existsSync(path.dirname(this.covidFilePath))) {
-          fs.mkdirSync(path.dirname(this.covidFilePath), { recursive: true });
-        }
-        fs.writeFileSync(this.covidFilePath, JSON.stringify(this.covidData));
+        await this.redisService.set(this.REDIS_KEY, JSON.stringify(this.covidData));
       }
     } catch (error) {
       this.logger.error('코로나 데이터 로드 오류', error.message);
@@ -70,7 +68,7 @@ export class InfoService implements OnModuleInit {
         };
 
         this.covidData = result;
-        fs.writeFileSync(this.covidFilePath, JSON.stringify(this.covidData));
+        await this.redisService.set(this.REDIS_KEY, JSON.stringify(this.covidData));
       } catch (error) {
         this.logger.error('코로나 정보 갱신 오류', error.message);
       }
