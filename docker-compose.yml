@@ -1,68 +1,88 @@
 services:
+  # 1. 개발용 DB (Postgres 18)
   db:
-    image: postgres:17-alpine
-    container_name: pds-api-db
+    image: postgres:18-alpine
+    container_name: pds-db-dev
     restart: always
-    environment:
-      POSTGRES_DB: ${DB_NAME:-pds_api}
-      POSTGRES_USER: ${DB_USER:-pds_user}
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-pds_password}
     volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "1017:5432"
-    networks:
-      - pds-network
-
-  app:
-    build:
-      context: .
-      dockerfile: apps/api/Dockerfile
-    container_name: pds-api-app
-    restart: always
-    ports:
-      - "${PORT:-10151}:${PORT:-10151}"
+      - ./.dev-data/postgres:/var/lib/postgresql/data
     environment:
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_NAME: ${DB_NAME:-pds_api}
-      DB_USER: ${DB_USER:-pds_user}
-      DB_PASSWORD: ${DB_PASSWORD:-pds_password}
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      PORT: ${PORT:-10151}
-      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:10150}
-    depends_on:
-      - db
-      - redis
+      - POSTGRES_USER=admin
+      - POSTGRES_PASSWORD=devpass
+      - POSTGRES_DB=pds_api
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin -d pds_api"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - pds-network
 
+  # 2. 개발용 Redis (Cache/Session)
   redis:
-    image: redis:7.4-alpine
-    container_name: pds-api-redis
+    image: redis:7-alpine
+    container_name: pds-redis-dev
     restart: always
+    command: redis-server --appendonly yes
     volumes:
-      - redisdata:/data
+      - ./.dev-data/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
     networks:
       - pds-network
 
-  web:
-    build:
-      context: .
-      dockerfile: apps/web/Dockerfile
-    container_name: pds-web-app
-    restart: always
+  # 3. 내 모노레포 코드 (API + Web)
+  app:
+    image: node:24
+    container_name: pds-monorepo-dev
+    working_dir: /app
+    volumes:
+      - ./:/app               # 프로젝트 루트 전체를 마운트
+    command: npm run dev
     ports:
-      - "10150:10150"
+      - "10150:10150"          # Web
+      - "10151:10151"          # API
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:10151
+      # Database
+      - API_DB_HOST=db
+      - API_DB_PORT=5432
+      - API_DB_NAME=pds_api
+      - API_DB_USER=admin
+      - API_DB_PASSWORD=devpass
+      
+      # Redis
+      - API_REDIS_HOST=redis
+      - API_REDIS_PORT=6379
+      
+      # Global config from .env
+      - API_PORT=10151
+      - API_ALLOWED_ORIGINS=https://*.bbforest.net,https://*.riri.li,https://*.hapbbi.com
+      
+      # JWT Authentication
+      - API_JWT_SECRET=e49b0bcd086588a217fac39c63f9a9ccb74d93bde63db5b13117e0ac7f6771b3cc54baaf6f0f0d748af717d3415b93b7db2b88347f60979360cef72ba881f17f
+      
+      # Aligo 알림톡 API
+      - API_ALIGO_API_KEY=kl2uj4d6o02gm40iubllqmdfknr7glml
+      - API_ALIGO_USER_ID=bbf1015
+      - API_ALIGO_FAILOVER=Y
+      
+      # Payapp API
+      - API_PAYAPP_USERID=bbf1015
+      - API_PAYAPP_LINKKEY=Hzcir5vkettuNYvbP4yE1u1DPJnCCRVaOgT+oqg6zaM=
+      - API_PAYAPP_RESELLERID=pds1015
+      
+      # Web Environment
+      - NEXT_PUBLIC_API_URL=http://localhost:10151
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - pds-network
-
-volumes:
-  pgdata:
-
 
 networks:
   pds-network:

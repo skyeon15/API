@@ -7,6 +7,8 @@ import { Service } from '../common/decorators/service.decorator.js';
 import { ApiKeyOrSessionGuard } from '../common/guards/api-key-or-session.guard.js';
 import { CurrentApiKey } from '../common/decorators/api-key.decorator.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
+import { AlimtalkSendDto } from './dto/alimtalk-send.dto.js';
+import { GeneralResponseDto, SendResultDataDto, ResultCheckDataDto } from './dto/alimtalk-response.dto.js';
 
 @ApiTags('알림톡')
 @ApiBearerAuth('api-key')
@@ -198,22 +200,9 @@ export class AlimtalkController {
 
   @Post('send')
   @ApiOperation({ summary: '알림톡 발송', description: '알림톡을 즉시 또는 예약 발송해요. `scheduledAt`이 없으면 즉시 발송이에요.' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['channelId', 'templateCode', 'receiverPhone'],
-      properties: {
-        channelId: { type: 'number', description: '발송에 사용할 채널 ID' },
-        templateCode: { type: 'string', description: '템플릿 코드', example: 'UC_0257' },
-        receiverPhone: { type: 'string', description: '수신자 전화번호', example: '01012345678' },
-        variables: { type: 'object', description: '템플릿 #{변수명} 치환값', example: { 이름: '홍길동' }, nullable: true },
-        scheduledAt: { type: 'string', format: 'date-time', description: '예약 발송 시각 (없으면 즉시 발송)', nullable: true, example: '2026-04-01T10:00:00+09:00' },
-      },
-    },
-  })
-  @ApiResponse({ status: 201, description: '발송 요청이 완료됐어요. 예약 발송인 경우 지정한 시각에 발송돼요.' })
+  @ApiResponse({ status: 201, description: '발송 요청이 완료됐어요. 예약 발송인 경우 지정한 시각에 발송돼요.', type: GeneralResponseDto<SendResultDataDto> })
   send(
-    @Body() body: { channelId: number; templateCode: string; receiverPhone: string; variables?: Record<string, string>; scheduledAt?: Date },
+    @Body() body: AlimtalkSendDto,
     @CurrentApiKey() apiKey: ApiKey,
     @Req() req: Request,
   ) {
@@ -260,10 +249,11 @@ export class AlimtalkController {
     });
   }
 
-  @Get('history/:id/result')
+  @Get('history/:tid/result')
   @ApiOperation({ summary: '발송 결과 조회', description: '실시간으로 발송 결과를 조회하고 DB에 저장해요.' })
-  @ApiParam({ name: 'id', description: '메시지 ID' })
-  getResult(@Param('id') id: number, @CurrentApiKey() apiKey: ApiKey, @Req() req: Request) {
-    return this.alimtalkService.getResult(id, this.ctx(apiKey, req).userId);
+  @ApiParam({ name: 'tid', description: '트랜잭션 ID', example: 'PAT-260401-A7B8C9' })
+  @ApiResponse({ type: GeneralResponseDto<ResultCheckDataDto> })
+  getResult(@Param('tid') tid: string, @CurrentApiKey() apiKey: ApiKey, @Req() req: Request) {
+    return this.alimtalkService.getResult(tid, this.ctx(apiKey, req).userId);
   }
 }

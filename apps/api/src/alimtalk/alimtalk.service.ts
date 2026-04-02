@@ -7,6 +7,9 @@ import { AlimtalkMessage, MessageType } from './entities/message.entity.js';
 import { AuditService, AuditContext } from '../audit/audit.service.js';
 import { AuditAction, AuditResource } from '../audit/entities/audit-log.entity.js';
 import { AligoProvider } from './aligo.provider.js';
+import { generateTid } from '../common/utils/id.util.js';
+import { GeneralResponseDto, SendResultDataDto, ResultCheckDataDto } from './dto/alimtalk-response.dto.js';
+import { AlimtalkSendDto } from './dto/alimtalk-send.dto.js';
 
 @Injectable()
 export class AlimtalkService {
@@ -218,9 +221,10 @@ export class AlimtalkService {
   }
 
   async send(
-    dto: { channelId: number; templateCode: string; receiverPhone: string; variables?: Record<string, string>; scheduledAt?: Date },
+    dto: AlimtalkSendDto,
     ctx: AuditContext,
-  ) {
+  ): Promise<GeneralResponseDto<SendResultDataDto>> {
+    const tid = generateTid('PAT');
     const channelWhere: FindOptionsWhere<AlimtalkChannel> = { id: dto.channelId, isActive: true };
     if (ctx.userId) channelWhere.createdByUserId = ctx.userId;
     const channel = await this.channelRepo.findOneBy(channelWhere);
@@ -255,6 +259,7 @@ export class AlimtalkService {
     });
 
     const msgEntity = this.messageRepo.create({
+      transactionId: tid,
       aligoMsgId: aligoResult.info?.mid ?? null,
       channelId: dto.channelId,
       templateCode: dto.templateCode,
@@ -273,7 +278,20 @@ export class AlimtalkService {
     const message = await this.messageRepo.save(msgEntity);
 
     await this.auditService.log({ ...ctx, action: AuditAction.SEND, resource: AuditResource.MESSAGE, resourceId: message.id, after: message });
-    return message;
+    
+    return {
+      tid,
+      status: 'success',
+      message: '알림톡 발송 요청이 완료되었습니다.',
+      data: {
+        messageId: message.id,
+        receiverPhone: message.receiverPhone,
+        content: message.content,
+        type: message.type,
+        scheduledAt: message.scheduledAt,
+        sentAt: message.sentAt,
+      },
+    };
   }
 
   async cancel(id: number, ctx: AuditContext) {
@@ -315,13 +333,25 @@ export class AlimtalkService {
     return { items, total, page, limit };
   }
 
-  async getResult(id: number, userId?: number) {
-    const where: FindOptionsWhere<AlimtalkMessage> = { id };
+  async getResult(tid: string, userId?: number): Promise<GeneralResponseDto<ResultCheckDataDto>> {
+    const where: FindOptionsWhere<AlimtalkMessage> = { transactionId: tid };
     if (userId) where.sentByUserId = userId;
 
     const message = await this.messageRepo.findOneBy(where);
     if (!message) throw new NotFoundException('메시지를 찾을 수 없어요.');
-    if (!message.aligoMsgId) return message;
+    if (!message.aligoMsgId) {
+      return {
+        tid,
+        status: 'success',
+        data: {
+          resultCode: message.resultCode,
+          resultMessage: message.resultMessage,
+          checkedAt: message.resultCheckedAt,
+          receiverPhone: message.receiverPhone,
+          sentAt: message.sentAt,
+        },
+      };
+    }
 
     const aligoResult = await this.aligo.getHistoryDetail(message.aligoMsgId);
     const detail = aligoResult.data?.[0];
@@ -331,6 +361,17 @@ export class AlimtalkService {
       message.resultCheckedAt = new Date();
       await this.messageRepo.save(message);
     }
-    return message;
+
+    return {
+      tid,
+      status: 'success',
+      data: {
+        resultCode: message.resultCode,
+        resultMessage: message.resultMessage,
+        checkedAt: message.resultCheckedAt,
+        receiverPhone: message.receiverPhone,
+        sentAt: message.sentAt,
+      },
+    };
   }
 }

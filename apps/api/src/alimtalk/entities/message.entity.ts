@@ -1,4 +1,4 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, BaseEntity, ManyToOne, JoinColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, BaseEntity, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { AlimtalkChannel } from './channel.entity.js';
 import { User } from '../../users/entities/user.entity.js';
 
@@ -12,6 +12,10 @@ export enum MessageType {
 export class AlimtalkMessage extends BaseEntity {
   @PrimaryGeneratedColumn()
   id: number;
+
+  @Index({ unique: true })
+  @Column({ type: 'varchar', nullable: true })
+  transactionId: string | null;
 
   @Column({ type: 'varchar', nullable: true })
   aligoMsgId: string | null;

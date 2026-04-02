@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/dialog';
 import AlimtalkPreview from './preview';
 
-const API_BASE = process.env.API_NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
 
 type TemplateType = '기본형' | '강조표기형' | '이미지형';
 

@@ -5,7 +5,8 @@ import { AppService } from './app.service.js';
 import { AdminPanelModule } from './admin/admin.module.js';
 import { IpRestrictionGuard } from './common/guards/ip-restriction.guard.js';
 import { ServeStaticModule } from '@nestjs/serve-static';
-import { join } from 'path';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 import { WruaModule } from './wrua/wrua.module.js';
 import { LostarkModule } from './lostark/lostark.module.js';
 import { CommonModule } from './common/common.module.js';
@@ -26,6 +27,8 @@ import { AuditLog } from './audit/entities/audit-log.entity.js';
 import { AlimtalkChannel } from './alimtalk/entities/channel.entity.js';
 import { AlimtalkTemplate } from './alimtalk/entities/template.entity.js';
 import { AlimtalkMessage } from './alimtalk/entities/message.entity.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 @Module({
   imports: [
@@ -60,7 +63,7 @@ import { AlimtalkMessage } from './alimtalk/entities/message.entity.js';
             AlimtalkMessage,
           ],
           synchronize: false,
-          migrations: [join(process.cwd(), 'dist/migrations/*.js')],
+          migrations: [join(__dirname, 'migrations/*.{ts,js}')],
           migrationsRun: true,
           migrationsTransactionMode: 'each',
           // 연결 실패 시 더 상세한 정보를 위해 추가 설정

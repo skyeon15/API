@@ -1,5 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "API_PORT", "API_ALLOWED_ORIGINS",
+    "API_DB_HOST", "API_DB_PORT", "API_DB_NAME", "API_DB_USER", "API_DB_PASSWORD",
+    "API_REDIS_HOST", "API_REDIS_PORT",
+    "API_JWT_SECRET",
+    "API_ALIGO_API_KEY", "API_ALIGO_USER_ID", "API_ALIGO_FAILOVER",
+    "API_PAYAPP_USERID", "API_PAYAPP_LINKKEY", "API_PAYAPP_RESELLERID",
+    "NEXT_PUBLIC_API_URL"
+  ],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

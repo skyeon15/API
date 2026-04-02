@@ -11,7 +11,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-const API_BASE = process.env.API_NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
 
 interface Category {
   parentCode: string;

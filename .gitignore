@@ -24,6 +24,7 @@ Desktop.ini
 # General Dot-Folders (Ignore all folders starting with .)
 .*/
 !.github
+.dev-data/
 
 # Markdown files
 *.md
