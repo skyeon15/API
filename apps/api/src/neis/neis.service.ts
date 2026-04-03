@@ -9,19 +9,23 @@ export class NeisService {
   constructor(private readonly timeService: TimeService) {}
 
   async getSchoolLunch(schoolName: string) {
-    const today = this.timeService.format("YYMMDD");
+    const today = this.timeService.format('YYMMDD');
     this.logger.log(`급식 조회 요청: ${schoolName}, 날짜: ${today}`);
 
     try {
       // 학교 정보 확인
-      const schoolInfoRes = await axios.get(encodeURI(`https://open.neis.go.kr/hub/schoolInfo?Type=json&SCHUL_NM=${schoolName}`));
+      const schoolInfoRes = await axios.get(
+        encodeURI(
+          `https://open.neis.go.kr/hub/schoolInfo?Type=json&SCHUL_NM=${schoolName}`,
+        ),
+      );
       const schoolJson = schoolInfoRes.data;
 
       if (!schoolJson.schoolInfo) {
         return {
-          STATUS: "오류-학교이름",
+          STATUS: '오류-학교이름',
           NAME: schoolName,
-          datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', new Date())
+          datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', new Date()),
         };
       }
 
@@ -30,34 +34,36 @@ export class NeisService {
       const schoolCode = schoolJson.schoolInfo[1].row[0].SD_SCHUL_CODE;
 
       // 급식 정보 조회
-      const mealRes = await axios.get(`https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=${educationCode}&SD_SCHUL_CODE=${schoolCode}&MLSV_YMD=${today}`);
+      const mealRes = await axios.get(
+        `https://open.neis.go.kr/hub/mealServiceDietInfo?Type=json&ATPT_OFCDC_SC_CODE=${educationCode}&SD_SCHUL_CODE=${schoolCode}&MLSV_YMD=${today}`,
+      );
       const mealJson = mealRes.data;
 
       if (mealJson.mealServiceDietInfo) {
         const meals = mealJson.mealServiceDietInfo[1].row.map((m: any) => ({
           meal: m.MMEAL_SC_NM,
-          dish: m.DDISH_NM
+          dish: m.DDISH_NM,
         }));
 
         return {
-          STATUS: "정상",
+          STATUS: '정상',
           NAME: name,
           datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', new Date()),
-          MEALS: meals
+          MEALS: meals,
         };
       } else {
         return {
-          STATUS: "오류-급식없음",
+          STATUS: '오류-급식없음',
           NAME: name,
-          datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', new Date())
+          datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', new Date()),
         };
       }
     } catch (error) {
       this.logger.error(`NEIS API 오류: ${schoolName}`, error.message);
       return {
-        STATUS: "오류-급식서버오류",
+        STATUS: '오류-급식서버오류',
         NAME: schoolName,
-        datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', new Date())
+        datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', new Date()),
       };
     }
   }

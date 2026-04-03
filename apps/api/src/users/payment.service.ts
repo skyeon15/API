@@ -39,10 +39,13 @@ export class PaymentService {
       ceo_nm?: string;
     },
   ) {
-    const resellerid = process.env.API_PAYAPP_RESELLERID || process.env.API_PAYAPP_USERID;
+    const resellerid =
+      process.env.API_PAYAPP_RESELLERID || process.env.API_PAYAPP_USERID;
 
     if (!resellerid) {
-      throw new BadRequestException('리셀러 아이디 설정이 완료되지 않았습니다.');
+      throw new BadRequestException(
+        '리셀러 아이디 설정이 완료되지 않았습니다.',
+      );
     }
 
     const postData: any = {
@@ -78,12 +81,17 @@ export class PaymentService {
         }),
       );
 
-      console.log(`[payapp API Response] cmd: ${postData.cmd}, data:`, response.data);
+      console.log(
+        `[payapp API Response] cmd: ${postData.cmd}, data:`,
+        response.data,
+      );
 
       const result = qs.parse(response.data) as any;
 
       if (result.state !== '1') {
-        throw new BadRequestException(result.errorMessage || '판매자 가입에 실패했습니다.');
+        throw new BadRequestException(
+          result.errorMessage || '판매자 가입에 실패했습니다.',
+        );
       }
 
       const seller = this.sellerRepo.create({
@@ -98,15 +106,20 @@ export class PaymentService {
       return await this.sellerRepo.save(seller);
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('payapp 통신 중 오류가 발생했습니다: ' + error.message);
+      throw new BadRequestException(
+        'payapp 통신 중 오류가 발생했습니다: ' + error.message,
+      );
     }
   }
 
   async checkSellerId(sellerId: string) {
-    const resellerid = process.env.API_PAYAPP_RESELLERID || process.env.API_PAYAPP_USERID;
+    const resellerid =
+      process.env.API_PAYAPP_RESELLERID || process.env.API_PAYAPP_USERID;
 
     if (!resellerid) {
-      throw new BadRequestException('리셀러 아이디 설정이 완료되지 않았습니다.');
+      throw new BadRequestException(
+        '리셀러 아이디 설정이 완료되지 않았습니다.',
+      );
     }
 
     const postData = {
@@ -124,18 +137,26 @@ export class PaymentService {
         }),
       );
 
-      console.log(`[payapp API Response] cmd: ${postData.cmd}, data:`, response.data);
+      console.log(
+        `[payapp API Response] cmd: ${postData.cmd}, data:`,
+        response.data,
+      );
 
       const result = qs.parse(response.data) as any;
 
       if (result.state !== '1') {
-        throw new BadRequestException(result.errorMessage || '이미 사용 중이거나 사용할 수 없는 아이디입니다.');
+        throw new BadRequestException(
+          result.errorMessage ||
+            '이미 사용 중이거나 사용할 수 없는 아이디입니다.',
+        );
       }
 
       return { success: true, message: '사용 가능한 아이디입니다.' };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('payapp 통신 중 오류가 발생했습니다: ' + error.message);
+      throw new BadRequestException(
+        'payapp 통신 중 오류가 발생했습니다: ' + error.message,
+      );
     }
   }
 
@@ -179,13 +200,18 @@ export class PaymentService {
         }),
       );
 
-      console.log(`[payapp API Response] cmd: ${postData.cmd}, data:`, response.data);
+      console.log(
+        `[payapp API Response] cmd: ${postData.cmd}, data:`,
+        response.data,
+      );
 
       // payapp returns data in querystring format as a string
       const result = qs.parse(response.data) as any;
 
       if (result.state !== '1') {
-        throw new BadRequestException(result.errorMessage || '카드 등록에 실패했습니다.');
+        throw new BadRequestException(
+          result.errorMessage || '카드 등록에 실패했습니다.',
+        );
       }
 
       // 실제 응답 필드명(소문자)을 우선 사용하고, 대괄호[] 제거
@@ -194,7 +220,10 @@ export class PaymentService {
 
       const payment = this.paymentRepo.create({
         userId: user.id,
-        cardNo: result.cardno || result.cardNum || cardInfo.cardNo.slice(0, 4) + '********' + cardInfo.cardNo.slice(-4),
+        cardNo:
+          result.cardno ||
+          result.cardNum ||
+          cardInfo.cardNo.slice(0, 4) + '********' + cardInfo.cardNo.slice(-4),
         cardName: cleanCardName,
         merchantId: userid,
         billingKey: result.encBill,
@@ -204,7 +233,9 @@ export class PaymentService {
       return await this.paymentRepo.save(payment);
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('payapp 통신 중 오류가 발생했습니다: ' + error.message);
+      throw new BadRequestException(
+        'payapp 통신 중 오류가 발생했습니다: ' + error.message,
+      );
     }
   }
 
@@ -232,18 +263,25 @@ export class PaymentService {
         }),
       );
 
-      console.log(`[payapp API Response] cmd: ${postData.cmd}, data:`, response.data);
+      console.log(
+        `[payapp API Response] cmd: ${postData.cmd}, data:`,
+        response.data,
+      );
 
       const result = qs.parse(response.data) as any;
 
       if (result.state !== '1') {
-        throw new BadRequestException(result.errorMessage || 'payapp에서 카드 삭제에 실패했습니다.');
+        throw new BadRequestException(
+          result.errorMessage || 'payapp에서 카드 삭제에 실패했습니다.',
+        );
       }
 
       return true;
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
-      throw new BadRequestException('payapp 통신 중 오류가 발생했습니다: ' + error.message);
+      throw new BadRequestException(
+        'payapp 통신 중 오류가 발생했습니다: ' + error.message,
+      );
     }
   }
 }

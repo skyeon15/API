@@ -1,14 +1,25 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
 import { AlimtalkChannel } from './entities/channel.entity.js';
 import { AlimtalkTemplate, TemplateType } from './entities/template.entity.js';
 import { AlimtalkMessage, MessageType } from './entities/message.entity.js';
 import { AuditService, AuditContext } from '../audit/audit.service.js';
-import { AuditAction, AuditResource } from '../audit/entities/audit-log.entity.js';
+import {
+  AuditAction,
+  AuditResource,
+} from '../audit/entities/audit-log.entity.js';
 import { AligoProvider } from './aligo.provider.js';
 import { generateTid } from '../common/utils/id.util.js';
-import { GeneralResponseDto, SendResultDataDto, ResultCheckDataDto } from './dto/alimtalk-response.dto.js';
+import {
+  GeneralResponseDto,
+  SendResultDataDto,
+  ResultCheckDataDto,
+} from './dto/alimtalk-response.dto.js';
 import { AlimtalkSendDto } from './dto/alimtalk-send.dto.js';
 
 @Injectable()
@@ -26,7 +37,7 @@ export class AlimtalkService {
 
   // ── 채널 ──────────────────────────────────────────────────────────────────
 
-  getChannels(userId?: number) {
+  getChannels(userId?: string) {
     const where: FindOptionsWhere<AlimtalkChannel> = {};
     if (userId) where.createdByUserId = userId;
     return this.channelRepo.find({ where, order: { createdAt: 'DESC' } });
@@ -41,26 +52,45 @@ export class AlimtalkService {
   }
 
   async addChannel(
-    params: { plusId: string; authNum: string; phone: string; categoryCode: string; name: string },
+    params: {
+      plusId: string;
+      authNum: string;
+      phone: string;
+      categoryCode: string;
+      name: string;
+    },
     ctx: AuditContext,
   ) {
     const aligoResult = await this.aligo.addChannel(params);
-    if (aligoResult.code !== 0) throw new BadRequestException(aligoResult.message);
+    if (aligoResult.code !== 0)
+      throw new BadRequestException(aligoResult.message);
 
     const senderKey = aligoResult.info?.senderkey ?? aligoResult.senderkey;
-    const channel = await this.channelRepo.save(this.channelRepo.create({
-      senderKey,
-      plusId: params.plusId,
-      name: params.name,
-      categoryCode: params.categoryCode,
-      createdByUserId: ctx.userId,
-    }));
+    const channel = await this.channelRepo.save(
+      this.channelRepo.create({
+        senderKey,
+        plusId: params.plusId,
+        name: params.name,
+        categoryCode: params.categoryCode,
+        createdByUserId: ctx.userId,
+      }),
+    );
 
-    await this.auditService.log({ ...ctx, action: AuditAction.CREATE, resource: AuditResource.CHANNEL, resourceId: channel.id, after: channel });
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.CREATE,
+      resource: AuditResource.CHANNEL,
+      resourceId: channel.id,
+      after: channel,
+    });
     return channel;
   }
 
-  async updateChannel(id: number, dto: Partial<Pick<AlimtalkChannel, 'name' | 'isActive'>>, ctx: AuditContext) {
+  async updateChannel(
+    id: string,
+    dto: Partial<Pick<AlimtalkChannel, 'name' | 'isActive'>>,
+    ctx: AuditContext,
+  ) {
     const where: FindOptionsWhere<AlimtalkChannel> = { id };
     if (ctx.userId) where.createdByUserId = ctx.userId;
 
@@ -70,13 +100,20 @@ export class AlimtalkService {
     const before = { ...channel };
     Object.assign(channel, dto);
     await this.channelRepo.save(channel);
-    await this.auditService.log({ ...ctx, action: AuditAction.UPDATE, resource: AuditResource.CHANNEL, resourceId: channel.id, before, after: channel });
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.UPDATE,
+      resource: AuditResource.CHANNEL,
+      resourceId: channel.id,
+      before,
+      after: channel,
+    });
     return channel;
   }
 
   // ── 템플릿 ────────────────────────────────────────────────────────────────
 
-  getTemplates(userId?: number, channelId?: number) {
+  getTemplates(userId?: string, channelId?: string) {
     const where: FindOptionsWhere<AlimtalkTemplate> = { isRemoved: false };
     if (userId) where.createdByUserId = userId;
     if (channelId) where.channelId = channelId;
@@ -92,7 +129,7 @@ export class AlimtalkService {
     return this.aligo.getTemplates(senderKey);
   }
 
-  async syncTemplates(channelId: number, ctx: AuditContext) {
+  async syncTemplates(channelId: string, ctx: AuditContext) {
     const where: FindOptionsWhere<AlimtalkChannel> = { id: channelId };
     if (ctx.userId) where.createdByUserId = ctx.userId;
 
@@ -101,10 +138,16 @@ export class AlimtalkService {
 
     const result = await this.aligo.getTemplates(channel.senderKey);
     const templates: any[] = result.data ?? [];
-    const typeMap: Record<string, TemplateType> = { BA: TemplateType.BASIC, EX: TemplateType.EMPHASIS, IM: TemplateType.IMAGE };
+    const typeMap: Record<string, TemplateType> = {
+      BA: TemplateType.BASIC,
+      EX: TemplateType.EMPHASIS,
+      IM: TemplateType.IMAGE,
+    };
 
     for (const tpl of templates) {
-      const existing = await this.templateRepo.findOneBy({ code: tpl.tpl_code });
+      const existing = await this.templateRepo.findOneBy({
+        code: tpl.tpl_code,
+      });
       const data = {
         name: tpl.tpl_name,
         content: tpl.tpl_content,
@@ -117,14 +160,29 @@ export class AlimtalkService {
         if (ctx.userId && existing.createdByUserId !== ctx.userId) continue;
         await this.templateRepo.save(Object.assign(existing, data));
       } else {
-        await this.templateRepo.save(this.templateRepo.create({ ...data, code: tpl.tpl_code, channelId, createdByUserId: ctx.userId }));
+        await this.templateRepo.save(
+          this.templateRepo.create({
+            ...data,
+            code: tpl.tpl_code,
+            channelId,
+            createdByUserId: ctx.userId,
+          }),
+        );
       }
     }
     return { synced: templates.length };
   }
 
   async createTemplate(
-    dto: { channelId: number; name: string; type: TemplateType; content: string; title?: string; subtitle?: string; buttons?: Record<string, any>[] },
+    dto: {
+      channelId: string;
+      name: string;
+      type: TemplateType;
+      content: string;
+      title?: string;
+      subtitle?: string;
+      buttons?: Record<string, any>[];
+    },
     ctx: AuditContext,
   ) {
     const where: FindOptionsWhere<AlimtalkChannel> = { id: dto.channelId };
@@ -133,8 +191,12 @@ export class AlimtalkService {
     const channel = await this.channelRepo.findOneBy(where);
     if (!channel) throw new NotFoundException('채널을 찾을 수 없어요.');
 
-    const aligoResult = await this.aligo.addTemplate({ senderKey: channel.senderKey, ...dto });
-    if (aligoResult.code !== 0) throw new BadRequestException(aligoResult.message);
+    const aligoResult = await this.aligo.addTemplate({
+      senderKey: channel.senderKey,
+      ...dto,
+    });
+    if (aligoResult.code !== 0)
+      throw new BadRequestException(aligoResult.message);
 
     const entity = this.templateRepo.create({
       code: aligoResult.tpl_code,
@@ -150,15 +212,37 @@ export class AlimtalkService {
     });
     const template = await this.templateRepo.save(entity);
 
-    await this.auditService.log({ ...ctx, action: AuditAction.CREATE, resource: AuditResource.TEMPLATE, resourceId: template.id, after: template });
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.CREATE,
+      resource: AuditResource.TEMPLATE,
+      resourceId: template.id,
+      after: template,
+    });
     return template;
   }
 
-  async updateTemplate(code: string, dto: Partial<{ name: string; content: string; title: string; subtitle: string; buttons: Record<string, any>[] }>, ctx: AuditContext) {
-    const where: FindOptionsWhere<AlimtalkTemplate> = { code, isRemoved: false };
+  async updateTemplate(
+    code: string,
+    dto: Partial<{
+      name: string;
+      content: string;
+      title: string;
+      subtitle: string;
+      buttons: Record<string, any>[];
+    }>,
+    ctx: AuditContext,
+  ) {
+    const where: FindOptionsWhere<AlimtalkTemplate> = {
+      code,
+      isRemoved: false,
+    };
     if (ctx.userId) where.createdByUserId = ctx.userId;
 
-    const template = await this.templateRepo.findOne({ where, relations: ['channel'] });
+    const template = await this.templateRepo.findOne({
+      where,
+      relations: ['channel'],
+    });
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
     const before = { ...template };
@@ -168,49 +252,90 @@ export class AlimtalkService {
       code,
       name: dto.name ?? template.name,
       content: dto.content ?? template.content,
-      title: (dto.title ?? template.title) ?? undefined,
-      subtitle: (dto.subtitle ?? template.subtitle) ?? undefined,
-      buttons: (dto.buttons ?? template.buttons) ?? undefined,
+      title: dto.title ?? template.title ?? undefined,
+      subtitle: dto.subtitle ?? template.subtitle ?? undefined,
+      buttons: dto.buttons ?? template.buttons ?? undefined,
     });
-    if (aligoResult.code !== 0) throw new BadRequestException(aligoResult.message);
+    if (aligoResult.code !== 0)
+      throw new BadRequestException(aligoResult.message);
 
     Object.assign(template, dto);
     await this.templateRepo.save(template);
-    await this.auditService.log({ ...ctx, action: AuditAction.UPDATE, resource: AuditResource.TEMPLATE, resourceId: template.id, before, after: template });
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.UPDATE,
+      resource: AuditResource.TEMPLATE,
+      resourceId: template.id,
+      before,
+      after: template,
+    });
     return template;
   }
 
   async deleteTemplate(code: string, type: 'db' | 'kakao', ctx: AuditContext) {
-    const where: FindOptionsWhere<AlimtalkTemplate> = { code, isRemoved: false };
+    const where: FindOptionsWhere<AlimtalkTemplate> = {
+      code,
+      isRemoved: false,
+    };
     if (ctx.userId) where.createdByUserId = ctx.userId;
 
-    const template = await this.templateRepo.findOne({ where, relations: ['channel'] });
+    const template = await this.templateRepo.findOne({
+      where,
+      relations: ['channel'],
+    });
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
     if (type === 'kakao') {
-      const aligoResult = await this.aligo.deleteTemplate(code, template.channel.senderKey);
-      if (aligoResult.code !== 0) throw new BadRequestException(aligoResult.message);
+      const aligoResult = await this.aligo.deleteTemplate(
+        code,
+        template.channel.senderKey,
+      );
+      if (aligoResult.code !== 0)
+        throw new BadRequestException(aligoResult.message);
     }
 
     const before = { isRemoved: false };
     template.isRemoved = true;
     await this.templateRepo.save(template);
-    await this.auditService.log({ ...ctx, action: AuditAction.DELETE, resource: AuditResource.TEMPLATE, resourceId: template.id, before, after: { isRemoved: true } });
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.DELETE,
+      resource: AuditResource.TEMPLATE,
+      resourceId: template.id,
+      before,
+      after: { isRemoved: true },
+    });
   }
 
   async requestInspection(code: string, ctx: AuditContext) {
-    const where: FindOptionsWhere<AlimtalkTemplate> = { code, isRemoved: false };
+    const where: FindOptionsWhere<AlimtalkTemplate> = {
+      code,
+      isRemoved: false,
+    };
     if (ctx.userId) where.createdByUserId = ctx.userId;
 
-    const template = await this.templateRepo.findOne({ where, relations: ['channel'] });
+    const template = await this.templateRepo.findOne({
+      where,
+      relations: ['channel'],
+    });
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
-    const aligoResult = await this.aligo.requestTemplateInspection(code, template.channel.senderKey);
-    if (aligoResult.code !== 0) throw new BadRequestException(aligoResult.message);
+    const aligoResult = await this.aligo.requestTemplateInspection(
+      code,
+      template.channel.senderKey,
+    );
+    if (aligoResult.code !== 0)
+      throw new BadRequestException(aligoResult.message);
 
     template.inspStatus = 'REQ';
     await this.templateRepo.save(template);
-    await this.auditService.log({ ...ctx, action: AuditAction.UPDATE, resource: AuditResource.TEMPLATE, resourceId: template.id, after: { inspStatus: 'REQ' } });
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.UPDATE,
+      resource: AuditResource.TEMPLATE,
+      resourceId: template.id,
+      after: { inspStatus: 'REQ' },
+    });
     return { message: '검수 요청이 완료됐어요.' };
   }
 
@@ -225,27 +350,38 @@ export class AlimtalkService {
     ctx: AuditContext,
   ): Promise<GeneralResponseDto<SendResultDataDto>> {
     const tid = generateTid('PAT');
-    const channelWhere: FindOptionsWhere<AlimtalkChannel> = { id: dto.channelId, isActive: true };
+    const channelWhere: FindOptionsWhere<AlimtalkChannel> = {
+      id: dto.channelId,
+      isActive: true,
+    };
     if (ctx.userId) channelWhere.createdByUserId = ctx.userId;
     const channel = await this.channelRepo.findOneBy(channelWhere);
     if (!channel) throw new NotFoundException('채널을 찾을 수 없어요.');
 
-    const templateWhere: FindOptionsWhere<AlimtalkTemplate> = { code: dto.templateCode, isRemoved: false };
+    const templateWhere: FindOptionsWhere<AlimtalkTemplate> = {
+      code: dto.templateCode,
+      isRemoved: false,
+    };
     if (ctx.userId) templateWhere.createdByUserId = ctx.userId;
     const template = await this.templateRepo.findOneBy(templateWhere);
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
     const vars = dto.variables ?? {};
     const content = this.replaceVars(template.content, vars);
-    const title = template.title ? this.replaceVars(template.title, vars) : undefined;
-    const buttons = template.buttons?.map(btn => ({
+    const title = template.title
+      ? this.replaceVars(template.title, vars)
+      : undefined;
+    const buttons = template.buttons?.map((btn) => ({
       ...btn,
       linkMo: btn.linkMo ? this.replaceVars(btn.linkMo, vars) : btn.linkMo,
       linkPc: btn.linkPc ? this.replaceVars(btn.linkPc, vars) : btn.linkPc,
     }));
 
     const scheduledAt = dto.scheduledAt
-      ? new Date(dto.scheduledAt).toISOString().replace(/[-:T]/g, '').slice(0, 14)
+      ? new Date(dto.scheduledAt)
+          .toISOString()
+          .replace(/[-:T]/g, '')
+          .slice(0, 14)
       : undefined;
 
     const aligoResult = await this.aligo.send({
@@ -277,8 +413,14 @@ export class AlimtalkService {
     });
     const message = await this.messageRepo.save(msgEntity);
 
-    await this.auditService.log({ ...ctx, action: AuditAction.SEND, resource: AuditResource.MESSAGE, resourceId: message.id, after: message });
-    
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.SEND,
+      resource: AuditResource.MESSAGE,
+      resourceId: message.id,
+      after: message,
+    });
+
     return {
       tid,
       status: 'success',
@@ -294,46 +436,80 @@ export class AlimtalkService {
     };
   }
 
-  async cancel(id: number, ctx: AuditContext) {
+  async cancel(id: string, ctx: AuditContext) {
     const where: FindOptionsWhere<AlimtalkMessage> = { id };
     if (ctx.userId) where.sentByUserId = ctx.userId;
 
     const message = await this.messageRepo.findOneBy(where);
     if (!message) throw new NotFoundException('메시지를 찾을 수 없어요.');
-    if (message.isRemoved) throw new BadRequestException('이미 취소된 메시지예요.');
+    if (message.isRemoved)
+      throw new BadRequestException('이미 취소된 메시지예요.');
 
     if (message.aligoMsgId) {
       const aligoResult = await this.aligo.cancel(message.aligoMsgId);
-      if (aligoResult.code !== 0) throw new BadRequestException(aligoResult.message);
+      if (aligoResult.code !== 0)
+        throw new BadRequestException(aligoResult.message);
     }
 
     const before = { type: message.type, isRemoved: message.isRemoved };
     message.type = MessageType.CANCELLED;
     message.isRemoved = true;
     await this.messageRepo.save(message);
-    await this.auditService.log({ ...ctx, action: AuditAction.CANCEL, resource: AuditResource.MESSAGE, resourceId: message.id, before, after: { type: MessageType.CANCELLED, isRemoved: true } });
+    await this.auditService.log({
+      ...ctx,
+      action: AuditAction.CANCEL,
+      resource: AuditResource.MESSAGE,
+      resourceId: message.id,
+      before,
+      after: { type: MessageType.CANCELLED, isRemoved: true },
+    });
     return { message: '취소됐어요.' };
   }
 
-  async getHistory(filters: { channelId?: number; templateCode?: string; receiverPhone?: string; from?: Date; to?: Date; page?: number; limit?: number; userId?: number }) {
-    const qb = this.messageRepo.createQueryBuilder('m')
+  async getHistory(filters: {
+    channelId?: string;
+    templateCode?: string;
+    receiverPhone?: string;
+    from?: Date;
+    to?: Date;
+    page?: number;
+    limit?: number;
+    userId?: string;
+  }) {
+    const qb = this.messageRepo
+      .createQueryBuilder('m')
       .leftJoinAndSelect('m.channel', 'channel')
       .orderBy('m.createdAt', 'DESC');
 
-    if (filters.userId) qb.andWhere('m.sentByUserId = :userId', { userId: filters.userId });
-    if (filters.channelId) qb.andWhere('m.channelId = :channelId', { channelId: filters.channelId });
-    if (filters.templateCode) qb.andWhere('m.templateCode = :templateCode', { templateCode: filters.templateCode });
-    if (filters.receiverPhone) qb.andWhere('m.receiverPhone = :phone', { phone: filters.receiverPhone.replace(/-/g, '') });
-    if (filters.from) qb.andWhere('m.createdAt >= :from', { from: filters.from });
+    if (filters.userId)
+      qb.andWhere('m.sentByUserId = :userId', { userId: filters.userId });
+    if (filters.channelId)
+      qb.andWhere('m.channelId = :channelId', { channelId: filters.channelId });
+    if (filters.templateCode)
+      qb.andWhere('m.templateCode = :templateCode', {
+        templateCode: filters.templateCode,
+      });
+    if (filters.receiverPhone)
+      qb.andWhere('m.receiverPhone = :phone', {
+        phone: filters.receiverPhone.replace(/-/g, ''),
+      });
+    if (filters.from)
+      qb.andWhere('m.createdAt >= :from', { from: filters.from });
     if (filters.to) qb.andWhere('m.createdAt <= :to', { to: filters.to });
 
     const page = Number(filters.page ?? 1);
     const limit = Math.min(Number(filters.limit ?? 20), 100);
-    const [items, total] = await qb.skip((page - 1) * limit).take(limit).getManyAndCount();
+    const [items, total] = await qb
+      .skip((page - 1) * limit)
+      .take(limit)
+      .getManyAndCount();
     return { items, total, page, limit };
   }
 
-  async getResult(tid: string, userId?: number): Promise<GeneralResponseDto<ResultCheckDataDto>> {
+  async getResult(
+    tid: string,
+    userId?: string,
+  ): Promise<GeneralResponseDto<ResultCheckDataDto>> {
     const where: FindOptionsWhere<AlimtalkMessage> = { transactionId: tid };
     if (userId) where.sentByUserId = userId;
 

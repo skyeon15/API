@@ -6,6 +6,9 @@ import { PaymentMethod } from './users/entities/payment-method.entity.js';
 import { PayappSeller } from './users/entities/payapp-seller.entity.js';
 import { VerificationCode } from './users/entities/verification-code.entity.js';
 import { RefreshToken } from './auth/entities/refresh-token.entity.js';
+import { UserSocialAccount } from './auth/entities/user-social-account.entity.js';
+import { OauthClient } from './auth/entities/oauth-client.entity.js';
+import { OauthGrant } from './auth/entities/oauth-grant.entity.js';
 import { AuditLog } from './audit/entities/audit-log.entity.js';
 import { AlimtalkChannel } from './alimtalk/entities/channel.entity.js';
 import { AlimtalkTemplate } from './alimtalk/entities/template.entity.js';
@@ -21,7 +24,21 @@ export const AppDataSource = new DataSource({
   database: process.env.API_DB_NAME || 'pds_api',
   synchronize: false,
   logging: true,
-  entities: [ApiKey, User, PaymentMethod, PayappSeller, VerificationCode, RefreshToken, AuditLog, AlimtalkChannel, AlimtalkTemplate, AlimtalkMessage],
+  entities: [
+    ApiKey,
+    User,
+    PaymentMethod,
+    PayappSeller,
+    VerificationCode,
+    RefreshToken,
+    UserSocialAccount,
+    OauthClient,
+    OauthGrant,
+    AuditLog,
+    AlimtalkChannel,
+    AlimtalkTemplate,
+    AlimtalkMessage,
+  ],
   migrations: ['src/migrations/*.ts'],
   migrationsTransactionMode: 'each',
   subscribers: [],

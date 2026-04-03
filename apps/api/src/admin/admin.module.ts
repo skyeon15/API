@@ -13,7 +13,17 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 import { User } from '../users/entities/user.entity.js';
-import { AuditLog, AuditAction, AuditResource } from '../audit/entities/audit-log.entity.js';
+import { UserSocialAccount } from '../auth/entities/user-social-account.entity.js';
+import { OauthClient } from '../auth/entities/oauth-client.entity.js';
+import { OauthGrant } from '../auth/entities/oauth-grant.entity.js';
+import {
+  AuditLog,
+  AuditAction,
+  AuditResource,
+} from '../audit/entities/audit-log.entity.js';
+import { AlimtalkChannel } from '../alimtalk/entities/channel.entity.js';
+import { AlimtalkTemplate } from '../alimtalk/entities/template.entity.js';
+import { AlimtalkMessage } from '../alimtalk/entities/message.entity.js';
 import { AlimtalkModule } from '../alimtalk/alimtalk.module.js';
 
 // Register adapter globally
@@ -29,14 +39,35 @@ const Components = {
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ApiKey, User, AuditLog]),
+    TypeOrmModule.forFeature([
+      ApiKey,
+      User,
+      UserSocialAccount,
+      OauthClient,
+      OauthGrant,
+      AuditLog,
+      AlimtalkChannel,
+      AlimtalkTemplate,
+      AlimtalkMessage,
+    ]),
     AlimtalkModule,
     AdminModule.createAdminAsync({
       inject: [getDataSourceToken()],
       useFactory: (dataSource: DataSource) => {
         const auditRepo = dataSource.getRepository(AuditLog);
-        const logAudit = (params: { action: AuditAction; resource: AuditResource; resourceId: string | number; before?: Record<string, any>; after?: Record<string, any> }) =>
-          auditRepo.save(auditRepo.create({ ...params, resourceId: String(params.resourceId) }));
+        const logAudit = (params: {
+          action: AuditAction;
+          resource: AuditResource;
+          resourceId: string;
+          before?: Record<string, any>;
+          after?: Record<string, any>;
+        }) =>
+          auditRepo.save(
+            auditRepo.create({
+              ...params,
+              resourceId: String(params.resourceId),
+            }),
+          );
         return {
           adminJsOptions: {
             rootPath: '/skyeon15',
@@ -55,19 +86,45 @@ const Components = {
                 options: {
                   navigation: { name: '사용자', icon: 'User' },
                   properties: {
+                    id: {
+                      isVisible: {
+                        list: true,
+                        filter: true,
+                        show: true,
+                        edit: false,
+                      },
+                    },
+                    ci: { description: '본인인증 연동 키값이에요.' },
+                    status: {
+                      availableValues: [
+                        { value: 'ACTIVE', label: '활성' },
+                        { value: 'BLOCKED', label: '차단' },
+                        { value: 'WITHDRAWN', label: '탈퇴' },
+                      ],
+                    },
+                    metadata: { type: 'mixed' },
                     name: { description: '사용자 이름이에요.' },
                     phone: { description: '연락처 전화번호예요.' },
                     company: { description: '소속 회사명이에요.' },
                     createdAt: { description: '계정 생성 시각이에요.' },
-                    updatedAt: { description: '정보가 마지막으로 변경된 시각이에요.' },
+                    updatedAt: {
+                      description: '정보가 마지막으로 변경된 시각이에요.',
+                    },
                   },
                   actions: {
                     new: {
                       after: async (response, _request, context) => {
                         if (context.record?.isValid()) {
-                          const id = parseInt(String(context.record.id()));
-                          const created = await dataSource.getRepository(User).findOne({ where: { id } });
-                          await logAudit({ action: AuditAction.CREATE, resource: AuditResource.USER, resourceId: id, after: created ?? undefined });
+                          const id = String(context.record.id());
+                          const created = await dataSource
+                            .getRepository(User)
+                            .findOne({ where: { id } });
+                          await logAudit({
+                            action: AuditAction.CREATE,
+                            resource: AuditResource.USER,
+                            resourceId: id,
+                            after: created ?? undefined,
+                          });
                         }
                         return response;
                       },
@@ -76,15 +133,25 @@ const Components = {
                       before: async (request) => {
                         const id = request.params?.recordId;
                         if (id) {
-                          (request as any)._before = await dataSource.getRepository(User).findOne({ where: { id: parseInt(id) } });
+                          request._before = await dataSource
+                            .getRepository(User)
+                            .findOne({ where: { id: String(id) } });
                         }
                         return request;
                       },
                       after: async (response, request, context) => {
                         if (context.record?.isValid()) {
-                          const id = parseInt(String(context.record.id()));
-                          const updated = await dataSource.getRepository(User).findOne({ where: { id } });
-                          await logAudit({ action: AuditAction.UPDATE, resource: AuditResource.USER, resourceId: id, before: (request as any)._before ?? undefined, after: updated ?? undefined });
+                          const id = String(context.record.id());
+                          const updated = await dataSource
+                            .getRepository(User)
+                            .findOne({ where: { id } });
+                          await logAudit({
+                            action: AuditAction.UPDATE,
+                            resource: AuditResource.USER,
+                            resourceId: id,
+                            before: request._before ?? undefined,
+                            after: updated ?? undefined,
+                          });
                         }
                         return response;
                       },
@@ -93,16 +160,71 @@ const Components = {
                       before: async (request) => {
                         const id = request.params?.recordId;
                         if (id) {
-                          (request as any)._before = await dataSource.getRepository(User).findOne({ where: { id: parseInt(id) } });
+                          request._before = await dataSource
+                            .getRepository(User)
+                            .findOne({ where: { id: String(id) } });
                         }
                         return request;
                       },
                       after: async (response, request, context) => {
-                        const id = context.record?.id() ?? request.params?.recordId ?? '';
-                        await logAudit({ action: AuditAction.DELETE, resource: AuditResource.USER, resourceId: id, before: (request as any)._before ?? undefined });
+                        const id =
+                          context.record?.id() ??
+                          request.params?.recordId ??
+                          '';
+                        await logAudit({
+                          action: AuditAction.DELETE,
+                          resource: AuditResource.USER,
+                          resourceId: String(id),
+                          before: request._before ?? undefined,
+                        });
                         return response;
                       },
                     },
+                  },
+                },
+              },
+              {
+                resource: new TypeORMResource(UserSocialAccount),
+                options: {
+                  navigation: { name: '사용자', icon: 'User' },
+                  properties: {
+                    rawProfile: { type: 'mixed' },
+                  },
+                },
+              },
+              {
+                resource: new TypeORMResource(OauthClient),
+                options: {
+                  navigation: { name: '인증/인가', icon: 'Key' },
+                },
+              },
+              {
+                resource: new TypeORMResource(OauthGrant),
+                options: {
+                  navigation: { name: '인증/인가', icon: 'Key' },
+                },
+              },
+              {
+                resource: new TypeORMResource(AlimtalkChannel),
+                options: {
+                  navigation: { name: '알림톡', icon: 'Chat' },
+                },
+              },
+              {
+                resource: new TypeORMResource(AlimtalkTemplate),
+                options: {
+                  navigation: { name: '알림톡', icon: 'Chat' },
+                  properties: {
+                    buttons: { type: 'mixed' },
+                  },
+                },
+              },
+              {
+                resource: new TypeORMResource(AlimtalkMessage),
+                options: {
+                  navigation: { name: '알림톡', icon: 'Chat' },
+                  properties: {
+                    buttons: { type: 'mixed' },
                   },
                 },
               },
@@ -136,9 +258,16 @@ const Components = {
                       },
                       after: async (response, _request, context) => {
                         if (context.record?.isValid()) {
-                          const id = parseInt(String(context.record.id()));
-                          const created = await dataSource.getRepository(ApiKey).findOne({ where: { id } });
-                          await logAudit({ action: AuditAction.CREATE, resource: AuditResource.API_KEY, resourceId: id, after: created ?? undefined });
+                          const id = String(context.record.id());
+                          const created = await dataSource
+                            .getRepository(ApiKey)
+                            .findOne({ where: { id: String(id) } });
+                          await logAudit({
+                            action: AuditAction.CREATE,
+                            resource: AuditResource.API_KEY,
+                            resourceId: id,
+                            after: created ?? undefined,
+                          });
                         }
                         return response;
                       },
@@ -147,15 +276,25 @@ const Components = {
                       before: async (request) => {
                         const id = request.params?.recordId;
                         if (id) {
-                          (request as any)._before = await dataSource.getRepository(ApiKey).findOne({ where: { id: parseInt(id) } });
+                          request._before = await dataSource
+                            .getRepository(ApiKey)
+                            .findOne({ where: { id: String(id) } });
                         }
                         return request;
                       },
                       after: async (response, request, context) => {
                         if (context.record?.isValid()) {
-                          const id = parseInt(String(context.record.id()));
-                          const updated = await dataSource.getRepository(ApiKey).findOne({ where: { id } });
-                          await logAudit({ action: AuditAction.UPDATE, resource: AuditResource.API_KEY, resourceId: id, before: (request as any)._before ?? undefined, after: updated ?? undefined });
+                          const id = String(context.record.id());
+                          const updated = await dataSource
+                            .getRepository(ApiKey)
+                            .findOne({ where: { id: String(id) } });
+                          await logAudit({
+                            action: AuditAction.UPDATE,
+                            resource: AuditResource.API_KEY,
+                            resourceId: id,
+                            before: request._before ?? undefined,
+                            after: updated ?? undefined,
+                          });
                         }
                         return response;
                       },
@@ -164,13 +303,23 @@ const Components = {
                       before: async (request) => {
                         const id = request.params?.recordId;
                         if (id) {
-                          (request as any)._before = await dataSource.getRepository(ApiKey).findOne({ where: { id: parseInt(id) } });
+                          request._before = await dataSource
+                            .getRepository(ApiKey)
+                            .findOne({ where: { id: String(id) } });
                         }
                         return request;
                       },
                       after: async (response, request, context) => {
-                        const id = context.record?.id() ?? request.params?.recordId ?? '';
-                        await logAudit({ action: AuditAction.DELETE, resource: AuditResource.API_KEY, resourceId: id, before: (request as any)._before ?? undefined });
+                        const id =
+                          context.record?.id() ??
+                          request.params?.recordId ??
+                          '';
+                        await logAudit({
+                          action: AuditAction.DELETE,
+                          resource: AuditResource.API_KEY,
+                          resourceId: String(id),
+                          before: request._before ?? undefined,
+                        });
                         return response;
                       },
                     },
@@ -179,17 +328,23 @@ const Components = {
                     key: {
                       isTitle: true,
                       isDisabled: true,
-                      description: '저장 시 자동으로 생성돼요. 직접 입력할 수 없어요.',
+                      description:
+                        '저장 시 자동으로 생성돼요. 직접 입력할 수 없어요.',
                     },
                     name: {
-                      description: '이 API 키를 식별할 이름이에요. (예: 서비스명, 사용자명)',
+                      description:
+                        '이 API 키를 식별할 이름이에요. (예: 서비스명, 사용자명)',
                     },
                     isActive: {
-                      description: '비활성화하면 해당 키로 API 요청이 즉시 차단돼요.',
+                      description:
+                        '비활성화하면 해당 키로 API 요청이 즉시 차단돼요.',
                     },
                     allowedServices: {
-                      description: '이 키로 접근을 허용할 서비스를 선택하세요. 선택하지 않은 서비스는 403 오류가 반환돼요.',
-                      availableValues: SERVICE_REGISTRY.map(({ value, label }) => ({ value, label })),
+                      description:
+                        '이 키로 접근을 허용할 서비스를 선택하세요. 선택하지 않은 서비스는 403 오류가 반환돼요.',
+                      availableValues: SERVICE_REGISTRY.map(
+                        ({ value, label }) => ({ value, label }),
+                      ),
                     },
                     createdAt: {
                       description: '키가 처음 생성된 시각이에요.',

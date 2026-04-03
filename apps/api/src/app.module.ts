@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { WruaModule } from './wrua/wrua.module.js';
 import { LostarkModule } from './lostark/lostark.module.js';
 import { CommonModule } from './common/common.module.js';
+import { RedisModule } from './common/redis/redis.module.js';
 import { NeisModule } from './neis/neis.module.js';
 import { InfoModule } from './info/info.module.js';
 import { AlimtalkModule } from './alimtalk/alimtalk.module.js';
@@ -23,6 +24,9 @@ import { PaymentMethod } from './users/entities/payment-method.entity.js';
 import { PayappSeller } from './users/entities/payapp-seller.entity.js';
 import { VerificationCode } from './users/entities/verification-code.entity.js';
 import { RefreshToken } from './auth/entities/refresh-token.entity.js';
+import { UserSocialAccount } from './auth/entities/user-social-account.entity.js';
+import { OauthClient } from './auth/entities/oauth-client.entity.js';
+import { OauthGrant } from './auth/entities/oauth-grant.entity.js';
 import { AuditLog } from './audit/entities/audit-log.entity.js';
 import { AlimtalkChannel } from './alimtalk/entities/channel.entity.js';
 import { AlimtalkTemplate } from './alimtalk/entities/template.entity.js';
@@ -41,7 +45,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
         const username = process.env.API_DB_USER || 'pds_user';
 
         logger.log(`데이터베이스 연결을 시도합니다...`);
-        logger.log(`언결 설정: Host=${host}, Port=${port}, Database=${database}, User=${username}`);
+        logger.log(
+          `언결 설정: Host=${host}, Port=${port}, Database=${database}, User=${username}`,
+        );
 
         return {
           type: 'postgres',
@@ -57,6 +63,9 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
             PayappSeller,
             VerificationCode,
             RefreshToken,
+            UserSocialAccount,
+            OauthClient,
+            OauthGrant,
             AuditLog,
             AlimtalkChannel,
             AlimtalkTemplate,
@@ -66,7 +75,6 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
           migrations: [join(__dirname, 'migrations/*.{ts,js}')],
           migrationsRun: true,
           migrationsTransactionMode: 'each',
-          // 연결 실패 시 더 상세한 정보를 위해 추가 설정
           retryAttempts: 3,
           retryDelay: 3000,
           verboseRetryLog: true,
@@ -79,6 +87,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
     WruaModule,
     LostarkModule,
     CommonModule,
+    RedisModule,
     NeisModule,
     InfoModule,
     AlimtalkModule,

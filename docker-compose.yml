@@ -75,7 +75,19 @@ services:
       - API_PAYAPP_RESELLERID=pds1015
       
       # Web Environment
-      - NEXT_PUBLIC_API_URL=http://localhost:10151
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:10151}
+      
+      # Social Login (OAuth2)
+      - API_KAKAO_CLIENT_ID=${API_KAKAO_CLIENT_ID}
+      - API_KAKAO_CLIENT_SECRET=${API_KAKAO_CLIENT_SECRET}
+      - API_NAVER_CLIENT_ID=${API_NAVER_CLIENT_ID}
+      - API_NAVER_CLIENT_SECRET=${API_NAVER_CLIENT_SECRET}
+      - API_GOOGLE_CLIENT_ID=${API_GOOGLE_CLIENT_ID}
+      - API_GOOGLE_CLIENT_SECRET=${API_GOOGLE_CLIENT_SECRET}
+      
+      # Server URL
+      - API_URL=${API_URL:-http://localhost:10151}
+      - API_WEB_URL=${API_WEB_URL:-http://localhost:10150}
     depends_on:
       db:
         condition: service_healthy

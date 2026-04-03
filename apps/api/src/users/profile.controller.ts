@@ -1,4 +1,17 @@
-import { Controller, Get, Patch, Post, Delete, Body, UnauthorizedException, Param, NotFoundException, UseGuards, Req, BadRequestException } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Patch,
+  Post,
+  Delete,
+  Body,
+  UnauthorizedException,
+  Param,
+  NotFoundException,
+  UseGuards,
+  Req,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity.js';
@@ -26,7 +39,7 @@ export class ProfileController {
     private readonly paymentService: PaymentService,
   ) {}
 
-  private getUserId(req: any): number {
+  private getUserId(req: any): string {
     const userId = req['userId'];
     if (!userId) throw new UnauthorizedException('로그인이 필요합니다.');
     return userId;
@@ -63,10 +76,7 @@ export class ProfileController {
 
   @Post('api-keys')
   @ApiOperation({ summary: 'API 키 생성' })
-  async createApiKey(
-    @Req() req: any,
-    @Body('name') name: string,
-  ) {
+  async createApiKey(@Req() req: any, @Body('name') name: string) {
     const userId = this.getUserId(req);
     const key = randomBytes(32).toString('hex');
     const apiKey = this.apiKeyRepo.create({
@@ -83,7 +93,7 @@ export class ProfileController {
   @ApiOperation({ summary: 'API 키 수정' })
   async updateApiKey(
     @Req() req: any,
-    @Param('id') id: number,
+    @Param('id') id: string,
     @Body() dto: Partial<Pick<ApiKey, 'name' | 'isActive' | 'allowedServices'>>,
   ) {
     const userId = this.getUserId(req);
@@ -96,10 +106,7 @@ export class ProfileController {
 
   @Delete('api-keys/:id')
   @ApiOperation({ summary: 'API 키 삭제' })
-  async deleteApiKey(
-    @Req() req: any,
-    @Param('id') id: number,
-  ) {
+  async deleteApiKey(@Req() req: any, @Param('id') id: string) {
     const userId = this.getUserId(req);
     const apiKey = await this.apiKeyRepo.findOneBy({ id, userId });
     if (!apiKey) throw new NotFoundException('API 키를 찾을 수 없습니다.');
@@ -134,7 +141,7 @@ export class ProfileController {
 
   @Delete('sellers/:id')
   @ApiOperation({ summary: '판매자 계정 삭제' })
-  async deleteSeller(@Req() req: any, @Param('id') id: number) {
+  async deleteSeller(@Req() req: any, @Param('id') id: string) {
     const userId = this.getUserId(req);
     const seller = await this.sellerRepo.findOneBy({ id, userId });
     if (!seller) throw new NotFoundException('판매자 계정을 찾을 수 없습니다.');
@@ -156,12 +163,19 @@ export class ProfileController {
   @ApiOperation({ summary: '결제 수단 등록' })
   async registerPayment(
     @Req() req: any,
-    @Body() body: { cardNo: string; expMonth: string; expYear: string; cardPw: string; buyerAuthNo: string },
+    @Body()
+    body: {
+      cardNo: string;
+      expMonth: string;
+      expYear: string;
+      cardPw: string;
+      buyerAuthNo: string;
+    },
   ) {
     const userId = this.getUserId(req);
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
-    
+
     return this.paymentService.registerCard(user, body);
   }
 
@@ -169,27 +183,24 @@ export class ProfileController {
   @ApiOperation({ summary: '결제 수단 정보 수정' })
   async updatePayment(
     @Req() req: any,
-    @Param('id') id: number,
+    @Param('id') id: string,
     @Body('cardName') cardName: string,
   ) {
     const userId = this.getUserId(req);
     const payment = await this.paymentRepo.findOneBy({ id, userId });
     if (!payment) throw new NotFoundException('결제 수단을 찾을 수 없습니다.');
-    
+
     payment.cardName = cardName;
     return this.paymentRepo.save(payment);
   }
 
   @Delete('payments/:id')
   @ApiOperation({ summary: '결제 수단 삭제' })
-  async deletePayment(
-    @Req() req: any,
-    @Param('id') id: number,
-  ) {
+  async deletePayment(@Req() req: any, @Param('id') id: string) {
     const userId = this.getUserId(req);
     const payment = await this.paymentRepo.findOneBy({ id, userId });
     if (!payment) throw new NotFoundException('결제 수단을 찾을 수 없습니다.');
-    
+
     // payapp에서도 삭제 처리
     await this.paymentService.deleteCard(payment);
 

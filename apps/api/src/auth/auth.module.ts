@@ -7,11 +7,21 @@ import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { User } from '../users/entities/user.entity.js';
 import { VerificationCode } from '../users/entities/verification-code.entity.js';
 import { RefreshToken } from './entities/refresh-token.entity.js';
+import { UserSocialAccount } from './entities/user-social-account.entity.js';
+import { OauthClient } from './entities/oauth-client.entity.js';
+import { OauthGrant } from './entities/oauth-grant.entity.js';
 import { AlimtalkModule } from '../alimtalk/alimtalk.module.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, VerificationCode, RefreshToken]),
+    TypeOrmModule.forFeature([
+      User,
+      VerificationCode,
+      RefreshToken,
+      UserSocialAccount,
+      OauthClient,
+      OauthGrant,
+    ]),
     JwtModule.registerAsync({
       useFactory: () => ({
         secret: process.env.API_JWT_SECRET || 'pds-jwt-secret',

@@ -12,7 +12,13 @@ import { PaymentService } from './payment.service.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([User, PaymentMethod, PayappSeller, VerificationCode, ApiKey]),
+    TypeOrmModule.forFeature([
+      User,
+      PaymentMethod,
+      PayappSeller,
+      VerificationCode,
+      ApiKey,
+    ]),
     forwardRef(() => AuthModule),
     HttpModule,
   ],

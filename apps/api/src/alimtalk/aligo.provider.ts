@@ -1,4 +1,8 @@
-import { Injectable, Logger, InternalServerErrorException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+} from '@nestjs/common';
 import axios from 'axios';
 
 const BASE_URL = 'https://kakaoapi.aligo.in/akv10';
@@ -14,10 +18,17 @@ export class AligoProvider {
     };
   }
 
-  private async post<T = any>(path: string, params: Record<string, any> = {}): Promise<T> {
+  private async post<T = any>(
+    path: string,
+    params: Record<string, any> = {},
+  ): Promise<T> {
     const form = new URLSearchParams();
-    for (const [key, value] of Object.entries({ ...this.credentials, ...params })) {
-      if (value !== undefined && value !== null) form.append(key, String(value));
+    for (const [key, value] of Object.entries({
+      ...this.credentials,
+      ...params,
+    })) {
+      if (value !== undefined && value !== null)
+        form.append(key, String(value));
     }
     try {
       const { data } = await axios.post<T>(`${BASE_URL}${path}`, form, {
@@ -50,7 +61,7 @@ export class AligoProvider {
     if (params.scheduledAt) payload.sendtime = params.scheduledAt;
     if (params.buttons?.length) {
       payload.button_1 = JSON.stringify({
-        button: params.buttons.map(btn => ({
+        button: params.buttons.map((btn) => ({
           name: btn.name,
           linkType: btn.linkType,
           linkM: btn.linkMo,
@@ -66,7 +77,10 @@ export class AligoProvider {
   }
 
   async getTemplates(senderKey?: string) {
-    return this.post('/template/list/', senderKey ? { senderkey: senderKey } : {});
+    return this.post(
+      '/template/list/',
+      senderKey ? { senderkey: senderKey } : {},
+    );
   }
 
   async getHistoryDetail(mid: string) {
@@ -88,7 +102,12 @@ export class AligoProvider {
     });
   }
 
-  async addChannel(params: { plusId: string; authNum: string; phone: string; categoryCode: string }) {
+  async addChannel(params: {
+    plusId: string;
+    authNum: string;
+    phone: string;
+    categoryCode: string;
+  }) {
     return this.post('/profile/add/', {
       plusid: params.plusId,
       authnum: params.authNum,
@@ -106,7 +125,11 @@ export class AligoProvider {
     subtitle?: string;
     buttons?: Record<string, any>[];
   }) {
-    const typeMap: Record<string, string> = { '기본형': 'BA', '강조표기형': 'EX', '이미지형': 'IM' };
+    const typeMap: Record<string, string> = {
+      기본형: 'BA',
+      강조표기형: 'EX',
+      이미지형: 'IM',
+    };
     const payload: Record<string, any> = {
       senderkey: params.senderKey,
       tpl_name: params.name,
@@ -115,7 +138,8 @@ export class AligoProvider {
     };
     if (params.title) payload.tpl_title = params.title;
     if (params.subtitle) payload.tpl_subtitle = params.subtitle;
-    if (params.buttons?.length) payload.buttons = JSON.stringify(params.buttons);
+    if (params.buttons?.length)
+      payload.buttons = JSON.stringify(params.buttons);
     return this.post('/template/add/', payload);
   }
 
@@ -136,15 +160,22 @@ export class AligoProvider {
     };
     if (params.title) payload.tpl_title = params.title;
     if (params.subtitle) payload.tpl_subtitle = params.subtitle;
-    if (params.buttons?.length) payload.buttons = JSON.stringify(params.buttons);
+    if (params.buttons?.length)
+      payload.buttons = JSON.stringify(params.buttons);
     return this.post('/template/modify/', payload);
   }
 
   async deleteTemplate(code: string, senderKey: string) {
-    return this.post('/template/del/', { tpl_code: code, senderkey: senderKey });
+    return this.post('/template/del/', {
+      tpl_code: code,
+      senderkey: senderKey,
+    });
   }
 
   async requestTemplateInspection(code: string, senderKey: string) {
-    return this.post('/template/request/', { tpl_code: code, senderkey: senderKey });
+    return this.post('/template/request/', {
+      tpl_code: code,
+      senderkey: senderKey,
+    });
   }
 }

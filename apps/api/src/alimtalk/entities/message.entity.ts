@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, BaseEntity, ManyToOne, JoinColumn, Index } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  BaseEntity,
+  ManyToOne,
+  JoinColumn,
+  Index,
+} from 'typeorm';
 import { AlimtalkChannel } from './channel.entity.js';
 import { User } from '../../users/entities/user.entity.js';
 
@@ -10,8 +19,8 @@ export enum MessageType {
 
 @Entity('alimtalk_messages')
 export class AlimtalkMessage extends BaseEntity {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Index({ unique: true })
   @Column({ type: 'varchar', nullable: true })
@@ -21,7 +30,7 @@ export class AlimtalkMessage extends BaseEntity {
   aligoMsgId: string | null;
 
   @Column()
-  channelId: number;
+  channelId: string;
 
   @ManyToOne(() => AlimtalkChannel, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'channelId' })
@@ -73,7 +82,7 @@ export class AlimtalkMessage extends BaseEntity {
   isRemoved: boolean;
 
   @Column({ nullable: true })
-  sentByUserId: number | null;
+  sentByUserId: string | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'sentByUserId' })

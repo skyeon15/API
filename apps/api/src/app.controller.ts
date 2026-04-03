@@ -7,11 +7,11 @@ import { ApiExcludeController } from '@nestjs/swagger';
 @ApiExcludeController()
 @Controller()
 export class AppController {
-  constructor(private readonly appService: AppService) { }
+  constructor(private readonly appService: AppService) {}
 
   @Get()
   @Redirect('https://platform.bbforest.net', 302)
-  getRoot() { }
+  getRoot() {}
 
   @Get('services')
   getServices() {

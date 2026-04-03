@@ -11,7 +11,11 @@ import { CommonModule } from '../common/common.module.js';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([AlimtalkChannel, AlimtalkTemplate, AlimtalkMessage]),
+    TypeOrmModule.forFeature([
+      AlimtalkChannel,
+      AlimtalkTemplate,
+      AlimtalkMessage,
+    ]),
     AuditModule,
     CommonModule,
   ],

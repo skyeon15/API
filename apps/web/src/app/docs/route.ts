@@ -1,3 +1,5 @@
+import { CONFIG } from '@/lib/constants';
+
 export function GET() {
   const html = `<!DOCTYPE html>
 <html>
@@ -8,7 +10,7 @@ export function GET() {
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   </head>
   <body>
-    <script id="api-reference" data-url="${process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net'}/docs/openapi.json"></script>
+    <script id="api-reference" data-url="${CONFIG.API_BASE}/docs/openapi.json"></script>
     <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
   </body>
 </html>`;

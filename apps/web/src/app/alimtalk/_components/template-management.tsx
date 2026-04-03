@@ -22,8 +22,9 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import AlimtalkPreview from './preview';
+import { CONFIG } from '@/lib/constants';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = CONFIG.API_BASE;
 
 type TemplateType = '기본형' | '강조표기형' | '이미지형';
 

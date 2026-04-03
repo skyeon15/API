@@ -22,7 +22,10 @@ export class TimeService {
     const D = date.getDate();
     const DD = (D < 10 ? '0' : '') + D;
     const start = new Date(date.getFullYear(), 0, 0);
-    const diff = (date.getTime() - start.getTime()) + (start.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
+    const diff =
+      date.getTime() -
+      start.getTime() +
+      (start.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000;
     const oneDay = 1000 * 60 * 60 * 24;
     let DDDa = Math.floor(diff / oneDay).toString();
     DDDa = DDDa.padStart(3, '0');

@@ -32,10 +32,10 @@ export class ApiKeyOrSessionGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest();
 
-    const requiredService = this.reflector.getAllAndOverride<string>(SERVICE_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredService = this.reflector.getAllAndOverride<string>(
+      SERVICE_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     // 1. Try Bearer token (API Key or JWT)
     const authHeader: string | undefined = req.headers['authorization'];
@@ -47,7 +47,10 @@ export class ApiKeyOrSessionGuard implements CanActivate {
         where: { key: token, isActive: true },
       });
       if (apiKey) {
-        if (!requiredService || apiKey.allowedServices?.includes(requiredService)) {
+        if (
+          !requiredService ||
+          apiKey.allowedServices?.includes(requiredService)
+        ) {
           req.apiKey = apiKey;
           req['userId'] = apiKey.userId;
           return true;

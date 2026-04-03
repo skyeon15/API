@@ -1,4 +1,14 @@
-import { Controller, Get, Param, Req, Res, Redirect, Ip, Logger, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Req,
+  Res,
+  Redirect,
+  Ip,
+  Logger,
+  UseGuards,
+} from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { TimeService } from './time.service.js';
 import axios from 'axios';
@@ -13,7 +23,7 @@ import { ApiTags } from '@nestjs/swagger';
 export class CommonController {
   private readonly logger = new Logger(CommonController.name);
 
-  constructor(private readonly timeService: TimeService) { }
+  constructor(private readonly timeService: TimeService) {}
 
   @Get('ip')
   getIp(@Ip() ip: string) {
@@ -27,7 +37,7 @@ export class CommonController {
 
   @Get('time')
   @Redirect('/time/bbforest.net')
-  getTimeDefault() { }
+  getTimeDefault() {}
 
   @Get('time/:url')
   async getTime(@Param('url') urlParam: string) {
@@ -38,25 +48,28 @@ export class CommonController {
     try {
       const response = await axios.get(`https://${url}`);
       return {
-        status: "정상",
+        status: '정상',
         url: url,
-        abbreviation: "KST",
-        timezone: "Asia/Seoul",
-        utc_offset: "UTC+09:00",
-        url_datetime: this.timeService.format("YYYY-MM-DD hh:mm:ss.CCC", response.headers.date),
-        server_datetime: this.timeService.format("YYYY-MM-DD hh:mm:ss.CCC"),
-        latency: new Date().getTime() - send + 'ms'
+        abbreviation: 'KST',
+        timezone: 'Asia/Seoul',
+        utc_offset: 'UTC+09:00',
+        url_datetime: this.timeService.format(
+          'YYYY-MM-DD hh:mm:ss.CCC',
+          response.headers.date,
+        ),
+        server_datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss.CCC'),
+        latency: new Date().getTime() - send + 'ms',
       };
     } catch (error) {
       this.logger.error(`시간 조회 오류: ${url}`, error.message);
       return {
-        status: "오류",
+        status: '오류',
         url: url,
-        abbreviation: "KST",
-        timezone: "Asia/Seoul",
-        utc_offset: "UTC+09:00",
-        server_datetime: this.timeService.format("YYYY-MM-DD hh:mm:ss.CCC"),
-        latency: new Date().getTime() - send + 'ms'
+        abbreviation: 'KST',
+        timezone: 'Asia/Seoul',
+        utc_offset: 'UTC+09:00',
+        server_datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss.CCC'),
+        latency: new Date().getTime() - send + 'ms',
       };
     }
   }
@@ -70,8 +83,8 @@ export class CommonController {
       return res.redirect(url);
     } else {
       return res.send(`URL이 올바르지 않습니다. http:// 또는 https://가 포함되어야 합니다.<br>
-      사용법 : api.bbforest.net/redirect/이동할주소<br>
-      입력된URL : api.bbforest.net/redirect/${url}<br>
+      사용법 : gaon.bbforest.net/redirect/이동할주소<br>
+      입력된URL : gaon.bbforest.net/redirect/${url}<br>
       파란대나무숲. Parandaenamusup. By.에케(@skyeon15)`);
     }
   }

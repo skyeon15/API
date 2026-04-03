@@ -10,8 +10,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { CONFIG } from '@/lib/constants';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = CONFIG.API_BASE;
 
 interface Category {
   parentCode: string;
@@ -102,10 +103,14 @@ export default function ChannelWizard({ isOpen, onClose, onSuccess }: ChannelWiz
           credentials: 'include',
           body: JSON.stringify({ plusId: formData.plusId, phone: formData.phone.replace(/-/g, '') }),
         });
-        if (!res.ok) {
-          const json = await res.json();
+        
+        const json = await res.json();
+        
+        // HTTP 200이라도 Aligo code가 0이 아니면 오류 처리
+        if (!res.ok || json.code !== 0) {
           throw new Error(json.message || '인증 요청에 실패했어요.');
         }
+        
         setAuthCooldown(60);
         setFormData((prev) => ({ ...prev, authNum: '' }));
         setStep(2);
@@ -129,10 +134,13 @@ export default function ChannelWizard({ isOpen, onClose, onSuccess }: ChannelWiz
         credentials: 'include',
         body: JSON.stringify({ plusId: formData.plusId, phone: formData.phone.replace(/-/g, '') }),
       });
-      if (!res.ok) {
-        const json = await res.json();
+      
+      const json = await res.json();
+      
+      if (!res.ok || json.code !== 0) {
         throw new Error(json.message || '재요청에 실패했어요.');
       }
+      
       setAuthCooldown(60);
     } catch (err: any) {
       setError(err.message);
@@ -196,65 +204,92 @@ export default function ChannelWizard({ isOpen, onClose, onSuccess }: ChannelWiz
         </DialogHeader>
 
         {/* Progress */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center justify-between mb-2 px-10">
           {[1, 2, 3].map((s) => (
-            <div key={s} className="flex items-center flex-1">
+            <div key={s} className="flex items-center flex-1 last:flex-none">
               <div
-                className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
-                  step >= s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-600'
+                className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium transition-colors ${
+                  step === s 
+                    ? 'bg-blue-600 text-white ring-4 ring-blue-100' 
+                    : step > s 
+                      ? 'bg-blue-600 text-white' 
+                      : 'bg-gray-200 text-gray-600'
                 }`}
               >
-                {s}
+                {step > s ? (
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="5 13l4 4L19 7" />
+                  </svg>
+                ) : s}
               </div>
               {s < 3 && (
-                <div className={`flex-1 h-1 mx-2 ${step > s ? 'bg-blue-600' : 'bg-gray-200'}`} />
+                <div className={`flex-1 h-1 mx-4 rounded ${step > s ? 'bg-blue-600' : 'bg-gray-200'}`} />
               )}
             </div>
           ))}
         </div>
-        <div className="flex justify-between text-xs text-gray-500 mb-4">
-          <span className={step >= 1 ? 'text-blue-600 font-medium' : ''}>기본 정보</span>
-          <span className={step >= 2 ? 'text-blue-600 font-medium' : ''}>인증</span>
-          <span className={step >= 3 ? 'text-blue-600 font-medium' : ''}>확인</span>
+        <div className="flex justify-between text-xs text-gray-500 mb-8 px-6">
+          <div className="flex flex-col items-center w-16">
+            <span className={step >= 1 ? 'text-blue-600 font-bold' : ''}>기본 정보</span>
+          </div>
+          <div className="flex flex-col items-center w-16">
+            <span className={step >= 2 ? 'text-blue-600 font-bold' : ''}>인증</span>
+          </div>
+          <div className="flex flex-col items-center w-16">
+            <span className={step >= 3 ? 'text-blue-600 font-bold' : ''}>확인</span>
+          </div>
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm whitespace-pre-line">
-            {error}
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm flex items-start gap-3">
+            <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <div className="whitespace-pre-line font-medium">{error}</div>
           </div>
         )}
 
         {/* Step 1 */}
         {step === 1 && (
-          <div className="space-y-4">
+          <div className="space-y-6">
             <div className="space-y-2">
-              <Label>
+              <Label className="text-sm font-semibold flex items-center gap-1">
                 카카오 채널 ID <span className="text-red-500">*</span>
               </Label>
               <Input
                 value={formData.plusId}
                 onChange={(e) => {
                   const val = e.target.value;
-                  setFormData((prev) => ({
-                    ...prev,
-                    plusId: val.startsWith('@') ? val : '@' + val.replace('@', ''),
-                  }));
+                  const newPlusId = val.startsWith('@') ? val : '@' + val.replace('@', '');
+                  setFormData((prev) => {
+                    const updates: any = { plusId: newPlusId };
+                    // @를 제외한 ID 값 추출
+                    const aliasValue = newPlusId.startsWith('@') ? newPlusId.slice(1) : newPlusId;
+                    // 채널 별칭이 비어있거나 기존 plusId(또는 @ 제외 버전)와 같으면 자동 업데이트
+                    const prevAliasValue = prev.plusId.startsWith('@') ? prev.plusId.slice(1) : prev.plusId;
+                    if (!prev.name || prev.name === prev.plusId || prev.name === prevAliasValue) {
+                      updates.name = aliasValue;
+                    }
+                    return { ...prev, ...updates };
+                  });
                 }}
                 placeholder="@채널아이디"
+                className="h-11"
               />
-              <p className="text-xs text-gray-500">채널 검색용 아이디를 입력하세요</p>
+              <p className="text-xs text-gray-500 ml-1 font-medium italic">채널 검색용 아이디를 입력하세요</p>
             </div>
 
             <div className="space-y-2">
-              <Label>
+              <Label className="text-sm font-semibold flex items-center gap-1">
                 채널 별칭 <span className="text-red-500">*</span>
               </Label>
               <Input
                 value={formData.name}
                 onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                 placeholder="예: 파란대나무숲"
+                className="h-11"
               />
-              <p className="text-xs text-gray-500">관리용 채널 이름</p>
+              <p className="text-xs text-gray-500 ml-1 font-medium italic">관리용 채널 이름</p>
             </div>
 
             <div className="space-y-2">

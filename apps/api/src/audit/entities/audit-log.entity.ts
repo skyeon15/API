@@ -1,4 +1,12 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, BaseEntity, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  BaseEntity,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { ApiKey } from '../../admin/entities/api-key.entity.js';
 import { User } from '../../users/entities/user.entity.js';
 
@@ -24,14 +32,14 @@ export class AuditLog extends BaseEntity {
   id: number;
 
   @Column({ nullable: true })
-  apiKeyId: number;
+  apiKeyId: string;
 
   @ManyToOne(() => ApiKey, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'apiKeyId' })
   apiKey: ApiKey;
 
   @Column({ nullable: true })
-  userId: number;
+  userId: string;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'userId' })

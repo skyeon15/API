@@ -4,8 +4,11 @@ import { ApiProperty } from '@nestjs/swagger';
  * 알림톡 발송 요청 DTO
  */
 export class AlimtalkSendDto {
-  @ApiProperty({ description: '발송에 사용할 채널 ID', example: 1 })
-  channelId: number;
+  @ApiProperty({
+    description: '채널 ID',
+    example: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+  })
+  channelId: string;
 
   @ApiProperty({ description: '템플릿 코드', example: 'UC_0257' })
   templateCode: string;

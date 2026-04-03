@@ -40,7 +40,10 @@ export class IpRestrictionGuard implements CanActivate {
     try {
       // Normalize IPv6-mapped IPv4 addresses (e.g., ::ffff:1.2.3.4)
       let addr = ipaddr.parse(ipString);
-      if (addr.kind() === 'ipv6' && (addr as ipaddr.IPv6).isIPv4MappedAddress()) {
+      if (
+        addr.kind() === 'ipv6' &&
+        (addr as ipaddr.IPv6).isIPv4MappedAddress()
+      ) {
         addr = (addr as ipaddr.IPv6).toIPv4Address();
       }
 
@@ -51,11 +54,15 @@ export class IpRestrictionGuard implements CanActivate {
 
         if (addr.kind() === cidrAddr.kind()) {
           if (addr.kind() === 'ipv4') {
-            if ((addr as ipaddr.IPv4).match(cidrAddr as ipaddr.IPv4, bitCount)) {
+            if (
+              (addr as ipaddr.IPv4).match(cidrAddr as ipaddr.IPv4, bitCount)
+            ) {
               return true;
             }
           } else if (addr.kind() === 'ipv6') {
-            if ((addr as ipaddr.IPv6).match(cidrAddr as ipaddr.IPv6, bitCount)) {
+            if (
+              (addr as ipaddr.IPv6).match(cidrAddr as ipaddr.IPv6, bitCount)
+            ) {
               return true;
             }
           }

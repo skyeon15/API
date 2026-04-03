@@ -1,33 +1,21 @@
-import { Injectable, OnModuleDestroy, Logger } from '@nestjs/common';
+import { Injectable, OnModuleDestroy, Logger, Inject } from '@nestjs/common';
 import { Redis } from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
-  private readonly client: Redis;
   private isConnected = false;
 
   // In-memory fallbacks
   private readonly memoryStore = new Map<string, string>();
   private readonly hashStore = new Map<string, Map<string, string>>();
 
-  constructor() {
-    const host = process.env.API_REDIS_HOST || 'localhost';
-    const port = parseInt(process.env.API_REDIS_PORT || '6379', 10);
-
-    this.client = new Redis({
-      host,
-      port,
-      retryStrategy: (times) => {
-        const delay = Math.min(times * 100, 3000); // Slightly adjusted delay
-        return delay;
-      },
-      // Finite retries to allow the app to actually start and use fallbacks if Redis is down
-      maxRetriesPerRequest: 10,
-      connectTimeout: 5000,
-    });
-
+  constructor(
+    @Inject('REDIS_CLIENT')
+    private readonly client: Redis,
+  ) {
     this.client.on('connect', () => {
+      const { host, port } = (this.client as any).options;
       this.logger.log(`Redis connected to ${host}:${port}`);
     });
 
@@ -38,17 +26,21 @@ export class RedisService implements OnModuleDestroy {
 
     this.client.on('error', (err) => {
       this.isConnected = false;
+      const { host, port } = (this.client as any).options;
       this.logger.error(`Redis 연결 오류 (${host}:${port}): ${err.message}`);
     });
 
     this.client.on('close', () => {
       this.isConnected = false;
-      this.logger.warn(`Redis 연결이 끊어졌습니다 (${host}:${port}). 인메모리 폴백으로 동작합니다.`);
+      const { host, port } = (this.client as any).options;
+      this.logger.warn(
+        `Redis 연결이 끊어졌습니다 (${host}:${port}). 인메모리 폴백으로 동작합니다.`,
+      );
     });
   }
 
   onModuleDestroy() {
-    this.client.disconnect();
+    // client is managed by RedisModule
   }
 
   getClient(): Redis {
@@ -62,7 +54,9 @@ export class RedisService implements OnModuleDestroy {
         return await this.client.get(key);
       }
     } catch (e) {
-      this.logger.warn(`Redis get failed for key "${key}", falling back to memory.`);
+      this.logger.warn(
+        `Redis get failed for key "${key}", falling back to memory.`,
+      );
     }
     return this.memoryStore.get(key) || null;
   }
@@ -80,7 +74,9 @@ export class RedisService implements OnModuleDestroy {
         return 'OK';
       }
     } catch (e) {
-      this.logger.warn(`Redis set failed for key "${key}", saved to memory only.`);
+      this.logger.warn(
+        `Redis set failed for key "${key}", saved to memory only.`,
+      );
     }
     return 'OK';
   }
@@ -92,7 +88,9 @@ export class RedisService implements OnModuleDestroy {
         return await this.client.del(key);
       }
     } catch (e) {
-      this.logger.warn(`Redis del failed for key "${key}", removed from memory only.`);
+      this.logger.warn(
+        `Redis del failed for key "${key}", removed from memory only.`,
+      );
     }
     return 1;
   }
@@ -104,7 +102,9 @@ export class RedisService implements OnModuleDestroy {
         return await this.client.hgetall(key);
       }
     } catch (e) {
-      this.logger.warn(`Redis hgetall failed for key "${key}", falling back to memory.`);
+      this.logger.warn(
+        `Redis hgetall failed for key "${key}", falling back to memory.`,
+      );
     }
 
     const memoryMap = this.hashStore.get(key);
@@ -130,7 +130,9 @@ export class RedisService implements OnModuleDestroy {
         return await this.client.hset(key, field, value);
       }
     } catch (e) {
-      this.logger.warn(`Redis hset failed for key "${key}", saved to memory only.`);
+      this.logger.warn(
+        `Redis hset failed for key "${key}", saved to memory only.`,
+      );
     }
     return 1;
   }
@@ -146,7 +148,9 @@ export class RedisService implements OnModuleDestroy {
         return await this.client.hdel(key, field);
       }
     } catch (e) {
-      this.logger.warn(`Redis hdel failed for key "${key}", removed from memory only.`);
+      this.logger.warn(
+        `Redis hdel failed for key "${key}", removed from memory only.`,
+      );
     }
     return 1;
   }

@@ -22,6 +22,13 @@ import { ApiKeyOrSessionGuard } from './guards/api-key-or-session.guard.js';
   ],
   controllers: [CommonController],
   providers: [TimeService, ApiKeyGuard, ApiKeyOrSessionGuard],
-  exports: [TimeService, ApiKeyGuard, ApiKeyOrSessionGuard, TypeOrmModule, JwtModule, RedisModule],
+  exports: [
+    TimeService,
+    ApiKeyGuard,
+    ApiKeyOrSessionGuard,
+    TypeOrmModule,
+    JwtModule,
+    RedisModule,
+  ],
 })
 export class CommonModule {}

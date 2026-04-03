@@ -8,8 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import ChannelManagement from './_components/channel-management';
 import TemplateManagement from './_components/template-management';
+import { CONFIG } from '@/lib/constants';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://api.bbforest.net';
+const API_BASE = CONFIG.API_BASE;
 
 type Tab = 'channels' | 'templates';
 
@@ -70,6 +71,12 @@ export default function AlimtalkPage() {
               >
                 프로필
               </Link>
+              <Link
+                href="/manage"
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                관리 콘솔
+              </Link>
               <Link href="/alimtalk" className="text-foreground font-medium">
                 알림톡
               </Link>
@@ -94,8 +101,8 @@ export default function AlimtalkPage() {
             <AlertDescription>
               채널 목록 조회 및 템플릿 관리에는{' '}
               <strong>알림톡 권한이 활성화된 API 키</strong>가 필요합니다.{' '}
-              <Link href="/profile" className="underline">
-                프로필에서 설정하기
+              <Link href="/manage" className="underline">
+                관리 콘솔에서 설정하기
               </Link>{' '}
               (채널 추가는 API 키 없이도 가능합니다)
             </AlertDescription>

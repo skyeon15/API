@@ -1,4 +1,13 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, BaseEntity, ManyToOne, JoinColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  BaseEntity,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { AlimtalkChannel } from './channel.entity.js';
 import { User } from '../../users/entities/user.entity.js';
 
@@ -10,8 +19,8 @@ export enum TemplateType {
 
 @Entity('alimtalk_templates')
 export class AlimtalkTemplate extends BaseEntity {
-  @PrimaryGeneratedColumn()
-  id: number;
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
 
   @Column({ unique: true })
   code: string;
@@ -20,7 +29,7 @@ export class AlimtalkTemplate extends BaseEntity {
   name: string;
 
   @Column()
-  channelId: number;
+  channelId: string;
 
   @ManyToOne(() => AlimtalkChannel, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'channelId' })
@@ -48,7 +57,7 @@ export class AlimtalkTemplate extends BaseEntity {
   isRemoved: boolean;
 
   @Column({ nullable: true })
-  createdByUserId: number | null;
+  createdByUserId: string | null;
 
   @ManyToOne(() => User, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'createdByUserId' })

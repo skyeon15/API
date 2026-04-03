@@ -1,4 +1,10 @@
-import { Injectable, Logger, InternalServerErrorException, BadRequestException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  InternalServerErrorException,
+  BadRequestException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { TimeService } from '../common/time.service.js';
 import { HttpService } from '@nestjs/axios';
 import { RedisService } from '../common/redis/redis.service.js';
@@ -27,20 +33,20 @@ export class WruaService {
   private readonly unlockedIps = new Set<string>();
 
   private readonly userConfig = {
-    '광현': {
+    광현: {
       url: 'https://calendar.google.com/calendar/ical/skyyeon15%40gmail.com/private-abc381306c00c039e636d91f4f6cc5a8/basic.ics',
-      isPrivate: true
+      isPrivate: true,
     },
-    '에케': {
+    에케: {
       url: 'https://calendar.google.com/calendar/ical/skyyeon15%40gmail.com/private-abc381306c00c039e636d91f4f6cc5a8/basic.ics',
-      isPrivate: true
+      isPrivate: true,
     },
   };
 
   constructor(
     private readonly httpService: HttpService,
     private readonly timeService: TimeService,
-    private readonly redisService: RedisService
+    private readonly redisService: RedisService,
   ) {}
 
   // Helper: IP 매핑 로드
@@ -117,7 +123,7 @@ export class WruaService {
     if (!userName || !this.userConfig[userName]) {
       throw new BadRequestException({
         error: 'Invalid or missing name parameter',
-        availableNames: Object.keys(this.userConfig)
+        availableNames: Object.keys(this.userConfig),
       });
     }
 
@@ -135,7 +141,7 @@ export class WruaService {
       const processedEvents: any[] = [];
       const isPrivate = config.isPrivate;
 
-      for (let k in events) {
+      for (const k in events) {
         if (Object.prototype.hasOwnProperty.call(events, k)) {
           const rawEvent = events[k];
           const parseResult = VEventSchema.safeParse(rawEvent);
@@ -145,9 +151,17 @@ export class WruaService {
           const eventEnd = new Date(ev.end);
           if (eventEnd >= today) {
             processedEvents.push({
-              start_datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', ev.start),
-              end_datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', ev.end),
-              summary: isPrivate ? this.formatPrivateSummary(ev.start, ev.end, ev.summary) : ev.summary,
+              start_datetime: this.timeService.format(
+                'YYYY-MM-DD hh:mm:ss',
+                ev.start,
+              ),
+              end_datetime: this.timeService.format(
+                'YYYY-MM-DD hh:mm:ss',
+                ev.end,
+              ),
+              summary: isPrivate
+                ? this.formatPrivateSummary(ev.start, ev.end, ev.summary)
+                : ev.summary,
               location: ev.location,
             });
           }
@@ -156,15 +170,14 @@ export class WruaService {
 
       return {
         name: userName,
-        events: processedEvents
+        events: processedEvents,
       };
-
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
       this.logger.error('Error fetching calendar:', error);
       throw new InternalServerErrorException({
         error: 'Failed to fetch calendar',
-        message: error.message
+        message: error.message,
       });
     }
   }
@@ -176,7 +189,7 @@ export class WruaService {
       throw new BadRequestException({
         error: 'Validation failed',
         message: bodyResult.error.issues[0].message,
-        example: { withName: '에케' }
+        example: { withName: '에케' },
       });
     }
 
@@ -186,7 +199,7 @@ export class WruaService {
     if (!calendarOwner || !this.userConfig[calendarOwner]) {
       throw new BadRequestException({
         error: 'Invalid or missing query parameter: name',
-        availableNames: Object.keys(this.userConfig)
+        availableNames: Object.keys(this.userConfig),
       });
     }
 
@@ -196,7 +209,7 @@ export class WruaService {
       this.unlockedIps.add(clientIp);
       return {
         success: true,
-        message: '관리자 모드 활성화!'
+        message: '관리자 모드 활성화!',
       };
     }
 
@@ -209,7 +222,7 @@ export class WruaService {
         if (boundName !== searchName) {
           throw new ForbiddenException({
             error: 'Restricted access',
-            message: '이름은 한 명만 검색할 수 있어요.'
+            message: '이름은 한 명만 검색할 수 있어요.',
           });
         }
       }
@@ -228,7 +241,7 @@ export class WruaService {
 
       const matchedEvents: any[] = [];
 
-      for (let k in events) {
+      for (const k in events) {
         if (!Object.prototype.hasOwnProperty.call(events, k)) continue;
         const rawEvent = events[k];
         // 3. Zod validation for each search result candidate
@@ -244,15 +257,19 @@ export class WruaService {
 
         const rawSummary = ev.summary;
         const dashIndex = rawSummary.indexOf('-');
-        const summaryLabel = dashIndex > 0
-          ? rawSummary.substring(0, dashIndex).trim()
-          : rawSummary.trim();
+        const summaryLabel =
+          dashIndex > 0
+            ? rawSummary.substring(0, dashIndex).trim()
+            : rawSummary.trim();
 
         matchedEvents.push({
-          start_datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', ev.start),
+          start_datetime: this.timeService.format(
+            'YYYY-MM-DD hh:mm:ss',
+            ev.start,
+          ),
           end_datetime: this.timeService.format('YYYY-MM-DD hh:mm:ss', ev.end),
           summary: summaryLabel,
-          location: ev.location
+          location: ev.location,
         });
       }
 
@@ -263,20 +280,27 @@ export class WruaService {
         }
       }
 
-      matchedEvents.sort((a, b) => new Date(a.start_datetime).getTime() - new Date(b.start_datetime).getTime());
+      matchedEvents.sort(
+        (a, b) =>
+          new Date(a.start_datetime).getTime() -
+          new Date(b.start_datetime).getTime(),
+      );
 
       return {
         name: searchName,
         count: matchedEvents.length,
-        events: matchedEvents
+        events: matchedEvents,
       };
-
     } catch (error) {
-      if (error instanceof BadRequestException || error instanceof ForbiddenException) throw error;
+      if (
+        error instanceof BadRequestException ||
+        error instanceof ForbiddenException
+      )
+        throw error;
       this.logger.error('Error in searchTogether:', error);
       throw new InternalServerErrorException({
         error: 'Failed to search calendar',
-        message: error.message
+        message: error.message,
       });
     }
   }
