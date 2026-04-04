@@ -22,18 +22,29 @@ export class AligoProvider {
     path: string,
     params: Record<string, any> = {},
   ): Promise<T> {
-    const form = new URLSearchParams();
-    for (const [key, value] of Object.entries({
+    const combinedParams = {
       ...this.credentials,
       ...params,
-    })) {
+    };
+
+    const form = new URLSearchParams();
+    for (const [key, value] of Object.entries(combinedParams)) {
       if (value !== undefined && value !== null)
         form.append(key, String(value));
     }
+
+    // 보안을 위해 API 키와 사용자 ID는 마스킹 처리하여 로그 기록
+    const maskedParams = {
+      ...combinedParams,
+      apikey: '********',
+      userid: combinedParams.userid ? '********' : undefined,
+    };
+
     try {
       const { data } = await axios.post<T>(`${BASE_URL}${path}`, form, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
+
       return data;
     } catch (error) {
       this.logger.error(`Aligo API 오류 [${path}]: ${error.message}`);

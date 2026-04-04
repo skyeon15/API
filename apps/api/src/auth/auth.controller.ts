@@ -192,15 +192,27 @@ export class AuthController {
   async kakaoCallback(
     @Query('code') code: string,
     @Query('state') state: string,
+    @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
     const callbackUrl = `${CONFIG.API_URL}/auth/kakao/callback`;
     const finalRedirect = state;
+
+    let currentUserId: string | undefined;
+    const token = req.cookies?.access_token;
+    if (token) {
+      try {
+        const payload = this.jwtService.verify(token);
+        currentUserId = payload.sub;
+      } catch {}
+    }
+
     const profile = await this.authService.getKakaoProfile(code, callbackUrl);
     const user = await this.authService.findOrCreateSocialUser(
       SocialProvider.KAKAO,
       profile.providerUserId,
       profile,
+      currentUserId,
     );
 
     const accessToken = this.jwtService.sign(
@@ -238,13 +250,24 @@ export class AuthController {
     @Query('code') code: string,
     @Query('state') state: string,
     @Query('finalRedirect') finalRedirect: string,
+    @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
+    let currentUserId: string | undefined;
+    const token = req.cookies?.access_token;
+    if (token) {
+      try {
+        const payload = this.jwtService.verify(token);
+        currentUserId = payload.sub;
+      } catch {}
+    }
+
     const profile = await this.authService.getNaverProfile(code, state);
     const user = await this.authService.findOrCreateSocialUser(
       SocialProvider.NAVER,
       profile.providerUserId,
       profile,
+      currentUserId,
     );
 
     const accessToken = this.jwtService.sign(
@@ -280,14 +303,26 @@ export class AuthController {
   async googleCallback(
     @Query('code') code: string,
     @Query('finalRedirect') finalRedirect: string,
+    @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
     const callbackUrl = `${CONFIG.API_URL}/auth/google/callback?finalRedirect=${finalRedirect}`;
+    
+    let currentUserId: string | undefined;
+    const token = req.cookies?.access_token;
+    if (token) {
+      try {
+        const payload = this.jwtService.verify(token);
+        currentUserId = payload.sub;
+      } catch {}
+    }
+
     const profile = await this.authService.getGoogleProfile(code, callbackUrl);
     const user = await this.authService.findOrCreateSocialUser(
       SocialProvider.GOOGLE,
       profile.providerUserId,
       profile,
+      currentUserId,
     );
 
     const accessToken = this.jwtService.sign(

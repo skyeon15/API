@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -10,6 +10,7 @@ import * as qs from 'querystring';
 
 @Injectable()
 export class PaymentService {
+  private readonly logger = new Logger(PaymentService.name);
   private readonly PAYAPP_API_URL = 'https://api.payapp.kr/oapi/apiLoad.html';
 
   constructor(
@@ -72,6 +73,11 @@ export class PaymentService {
       postData.username = data.sellerName;
     }
 
+    const maskedPostData = {
+      ...postData,
+      userpwd: '********',
+    };
+
     try {
       const response = await firstValueFrom(
         this.httpService.post(this.PAYAPP_API_URL, qs.stringify(postData), {
@@ -79,11 +85,6 @@ export class PaymentService {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
         }),
-      );
-
-      console.log(
-        `[payapp API Response] cmd: ${postData.cmd}, data:`,
-        response.data,
       );
 
       const result = qs.parse(response.data) as any;
@@ -106,6 +107,7 @@ export class PaymentService {
       return await this.sellerRepo.save(seller);
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
+      this.logger.error(`Payapp API Error [${postData.cmd}]: ${error.message}`);
       throw new BadRequestException(
         'payapp 통신 중 오류가 발생했습니다: ' + error.message,
       );
@@ -137,11 +139,6 @@ export class PaymentService {
         }),
       );
 
-      console.log(
-        `[payapp API Response] cmd: ${postData.cmd}, data:`,
-        response.data,
-      );
-
       const result = qs.parse(response.data) as any;
 
       if (result.state !== '1') {
@@ -154,6 +151,7 @@ export class PaymentService {
       return { success: true, message: '사용 가능한 아이디입니다.' };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
+      this.logger.error(`Payapp API Error [${postData.cmd}]: ${error.message}`);
       throw new BadRequestException(
         'payapp 통신 중 오류가 발생했습니다: ' + error.message,
       );
@@ -191,6 +189,13 @@ export class PaymentService {
       buyerId: `api.${user.id}`,
     };
 
+    const maskedPostData = {
+      ...postData,
+      cardNo: '********',
+      cardPw: '****',
+      buyerAuthNo: '********',
+    };
+
     try {
       const response = await firstValueFrom(
         this.httpService.post(this.PAYAPP_API_URL, qs.stringify(postData), {
@@ -198,11 +203,6 @@ export class PaymentService {
             'Content-Type': 'application/x-www-form-urlencoded',
           },
         }),
-      );
-
-      console.log(
-        `[payapp API Response] cmd: ${postData.cmd}, data:`,
-        response.data,
       );
 
       // payapp returns data in querystring format as a string
@@ -230,9 +230,10 @@ export class PaymentService {
         isActive: true,
       });
 
-      return await this.paymentRepo.save(payment);
+      return await this.sellerRepo.manager.save(payment);
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
+      this.logger.error(`Payapp API Error [${postData.cmd}]: ${error.message}`);
       throw new BadRequestException(
         'payapp 통신 중 오류가 발생했습니다: ' + error.message,
       );
@@ -263,11 +264,6 @@ export class PaymentService {
         }),
       );
 
-      console.log(
-        `[payapp API Response] cmd: ${postData.cmd}, data:`,
-        response.data,
-      );
-
       const result = qs.parse(response.data) as any;
 
       if (result.state !== '1') {
@@ -279,6 +275,7 @@ export class PaymentService {
       return true;
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
+      this.logger.error(`Payapp API Error [${postData.cmd}]: ${error.message}`);
       throw new BadRequestException(
         'payapp 통신 중 오류가 발생했습니다: ' + error.message,
       );

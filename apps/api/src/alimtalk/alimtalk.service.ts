@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, FindOptionsWhere } from 'typeorm';
@@ -24,6 +25,8 @@ import { AlimtalkSendDto } from './dto/alimtalk-send.dto.js';
 
 @Injectable()
 export class AlimtalkService {
+  private readonly logger = new Logger(AlimtalkService.name);
+
   constructor(
     @InjectRepository(AlimtalkChannel)
     private readonly channelRepo: Repository<AlimtalkChannel>,
@@ -37,10 +40,11 @@ export class AlimtalkService {
 
   // ── 채널 ──────────────────────────────────────────────────────────────────
 
-  getChannels(userId?: string) {
+  async getChannels(userId?: string) {
     const where: FindOptionsWhere<AlimtalkChannel> = {};
     if (userId) where.createdByUserId = userId;
-    return this.channelRepo.find({ where, order: { createdAt: 'DESC' } });
+    const channels = await this.channelRepo.find({ where, order: { createdAt: 'DESC' } });
+    return channels.map(({ senderKey: _, ...rest }) => rest);
   }
 
   getCategories() {
@@ -111,6 +115,98 @@ export class AlimtalkService {
     return channel;
   }
 
+  async syncAllChannelsFromVendor(ctx: AuditContext) {
+    const result = await this.aligo.listChannels();
+    const vendorChannels = result.list || result.data || [];
+    let addedCount = 0;
+    let updatedCount = 0;
+
+    if (vendorChannels.length === 0) {
+      this.logger.warn('동기화할 채널이 없습니다. (vendorChannels is empty)');
+    }
+
+    for (const vc of vendorChannels) {
+      // 알리고 응답 필드명이 대소문자나 언더바 유무가 다를 수 있으므로 유연하게 처리
+      const senderKey = vc.senderkey || vc.sender_key || vc.senderKey;
+      const plusId = vc.plusid || vc.plus_id || vc.plusId || vc.uuid;
+      const name = vc.name || vc.channel_name;
+      const categoryCode = vc.categorycode || vc.category_code || vc.categoryCode || vc.catCode;
+      const status = vc.status || vc.channel_status;
+
+      if (!senderKey) {
+        this.logger.error({
+          msg: 'Sync Error: senderKey를 찾을 수 없습니다.',
+          vcKeys: Object.keys(vc),
+          vc,
+        });
+        continue;
+      }
+
+      const existing = await this.channelRepo.findOneBy({
+        senderKey: senderKey,
+      });
+
+      if (!existing) {
+        const channel = await this.channelRepo.save(
+          this.channelRepo.create({
+            senderKey: senderKey,
+            plusId: plusId,
+            name: name,
+            categoryCode: categoryCode,
+            isActive: status === 'O',
+            createdByUserId: ctx.userId,
+          }),
+        );
+        addedCount++;
+
+        this.logger.log(`Sync: 신규 채널 추가됨 [${senderKey}] ${name}`);
+
+        await this.auditService.log({
+          ...ctx,
+          action: AuditAction.CREATE,
+          resource: AuditResource.CHANNEL,
+          resourceId: channel.id,
+          after: channel,
+        });
+      } else {
+        // 기존 채널 정보 업데이트
+        const updateData = {
+          name: name,
+          categoryCode: categoryCode,
+          isActive: status === 'O',
+        };
+        const hasChange =
+          existing.name !== updateData.name ||
+          existing.categoryCode !== updateData.categoryCode ||
+          existing.isActive !== updateData.isActive;
+
+        if (hasChange) {
+          const before = { ...existing };
+          Object.assign(existing, updateData);
+          await this.channelRepo.save(existing);
+          updatedCount++;
+
+          this.logger.log(`Sync: 기존 채널 정보 업데이트됨 [${senderKey}] ${name}`);
+
+          await this.auditService.log({
+            ...ctx,
+            action: AuditAction.UPDATE,
+            resource: AuditResource.CHANNEL,
+            resourceId: existing.id,
+            before,
+            after: existing,
+          });
+        }
+      }
+    }
+
+    return {
+      total: vendorChannels.length,
+      added: addedCount,
+      updated: updatedCount,
+    };
+  }
+
   // ── 템플릿 ────────────────────────────────────────────────────────────────
 
   getTemplates(userId?: string, channelId?: string) {
@@ -137,13 +233,20 @@ export class AlimtalkService {
     if (!channel) throw new NotFoundException('채널을 찾을 수 없어요.');
 
     const result = await this.aligo.getTemplates(channel.senderKey);
-    const templates: any[] = result.data ?? [];
+    const templates: any[] = result.list ?? result.data ?? [];
     const typeMap: Record<string, TemplateType> = {
       BA: TemplateType.BASIC,
       EX: TemplateType.EMPHASIS,
       IM: TemplateType.IMAGE,
     };
 
+    if (templates.length === 0) {
+      this.logger.warn(
+        `동기화할 템플릿이 없습니다. (senderKey: ${channel.senderKey})`,
+      );
+    }
+
+    let syncedCount = 0;
     for (const tpl of templates) {
       const existing = await this.templateRepo.findOneBy({
         code: tpl.tpl_code,
@@ -159,6 +262,9 @@ export class AlimtalkService {
       if (existing) {
         if (ctx.userId && existing.createdByUserId !== ctx.userId) continue;
         await this.templateRepo.save(Object.assign(existing, data));
+        syncedCount++;
+
+        this.logger.log(`Sync: 템플릿 업데이트됨 [${tpl.tpl_code}] ${tpl.tpl_name}`);
       } else {
         await this.templateRepo.save(
           this.templateRepo.create({
@@ -168,9 +274,12 @@ export class AlimtalkService {
             createdByUserId: ctx.userId,
           }),
         );
+        syncedCount++;
+
+        this.logger.log(`Sync: 신규 템플릿 추가됨 [${tpl.tpl_code}] ${tpl.tpl_name}`);
       }
     }
-    return { synced: templates.length };
+    return { synced: syncedCount };
   }
 
   async createTemplate(

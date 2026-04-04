@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AlimtalkChannel } from './entities/channel.entity.js';
 import { AlimtalkTemplate } from './entities/template.entity.js';
 import { AlimtalkMessage } from './entities/message.entity.js';
+import { User } from '../users/entities/user.entity.js';
 import { AlimtalkController } from './alimtalk.controller.js';
 import { AlimtalkService } from './alimtalk.service.js';
 import { AligoProvider } from './aligo.provider.js';
@@ -15,6 +16,7 @@ import { CommonModule } from '../common/common.module.js';
       AlimtalkChannel,
       AlimtalkTemplate,
       AlimtalkMessage,
+      User,
     ]),
     AuditModule,
     CommonModule,

@@ -254,7 +254,7 @@ export default function ProfilePage() {
               <CardDescription>로그인에 사용하는 소셜 계정들입니다.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {['kakao', 'naver', 'google', 'apple'].map(provider => {
+              {['kakao', 'naver', 'google'].map(provider => {
                 const isLinked = socialAccounts.find(s => s.provider === provider);
                 return (
                   <div key={provider} className="flex items-center justify-between">

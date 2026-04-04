@@ -152,9 +152,10 @@ export class AuthService {
     provider: SocialProvider,
     providerUserId: string,
     profile: any,
+    currentUserId?: string,
   ): Promise<User> {
     console.log(
-      `[AUTH] findOrCreateSocialUser: provider=${provider}, providerUserId=${providerUserId}`,
+      `[AUTH] findOrCreateSocialUser: provider=${provider}, providerUserId=${providerUserId}, currentUserId=${currentUserId}`,
     );
     let socialAccount: UserSocialAccount | null = null;
     try {
@@ -169,13 +170,38 @@ export class AuthService {
 
     const rawData = profile.raw || profile;
 
+    // 이미 연동된 소셜 계정인 경우
     if (socialAccount) {
+      // 1. 로그인 중인 경우 (연동 시도)
+      if (currentUserId && socialAccount.userId !== currentUserId) {
+        throw new BadRequestException(
+          '이미 다른 계정에 연동된 소셜 계정입니다.',
+        );
+      }
+      // 2. 로그인 중이 아니거나, 본인 계정인 경우 (로그인 또는 연동 갱신)
       socialAccount.rawProfile = rawData;
       socialAccount.syncedAt = new Date();
       await socialAccount.save();
       return socialAccount.user;
     }
 
+    // 연동된 소셜 계정이 없는 경우
+    
+    // 1. 로그인 중인 경우 (새로운 연동)
+    if (currentUserId) {
+      await this.socialAccountRepo.save(
+        this.socialAccountRepo.create({
+          userId: currentUserId,
+          provider,
+          providerUserId,
+          rawProfile: rawData,
+          syncedAt: new Date(),
+        }),
+      );
+      return this.getUserById(currentUserId);
+    }
+
+    // 2. 로그인 중이 아닌 경우 (신규 가입 또는 자동 계정 통합)
     // CI 또는 이메일로 기존 유저 확인 (계정 통합 로직)
     let user: User | null = null;
     if (profile.ci) {

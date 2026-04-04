@@ -4,9 +4,10 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { CONFIG } from '@/lib/constants';
 
 interface User {
-  id: number;
+  id: string;
   name: string;
   phone: string;
+  roles: string[];
   company?: string;
 }
 

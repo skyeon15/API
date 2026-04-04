@@ -13,6 +13,12 @@ export enum UserStatus {
   WITHDRAWN = 'WITHDRAWN',
 }
 
+export enum UserRole {
+  USER = 'USER',
+  ADMIN = 'ADMIN',
+  DEVELOPER = 'DEVELOPER',
+}
+
 @Entity('users')
 export class User extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
@@ -56,6 +62,13 @@ export class User extends BaseEntity {
 
   @Column({ type: 'enum', enum: UserStatus, default: UserStatus.ACTIVE })
   status: UserStatus;
+
+  @Column({
+    type: 'text',
+    array: true,
+    default: '{USER}',
+  })
+  roles: UserRole[];
 
   @Column({ type: 'jsonb', nullable: true })
   metadata: Record<string, any>;

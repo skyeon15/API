@@ -10,8 +10,10 @@ config({ path: path.join(process.cwd(), '../../.env') });
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { SERVICE_REGISTRY } from './common/service-registry.js';
+import { setupAxiosLogger } from './common/axios-logger.js';
 
 const REQUIRED_ENV_VARS = [
   'API_DB_HOST',
@@ -60,14 +62,19 @@ function checkEnvVars() {
 async function bootstrap() {
   checkEnvVars();
   console.log('[BOOTSTRAP] Starting Nest application...');
-  const app = await NestFactory.create(AppModule);
+  
+  // Axios 전역 로거 설정
+  setupAxiosLogger();
+
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+
+  // Pino 로거 사용
+  app.useLogger(app.get(Logger));
 
   app.use(cookieParser());
 
   app.enableCors({
     origin: (origin, callback) => {
-      // 디버깅을 위한 로그 추가 (터미널에서 확인 가능)
-      console.log(`[CORS DEBUG] Incoming Origin: ${origin}`);
       // 모든 오리진 허용
       callback(null, true);
     },
@@ -108,9 +115,12 @@ async function bootstrap() {
 
   const port = process.env.API_PORT || 10151;
   const baseUrl = process.env.API_URL || `http://localhost:${port}`;
-  console.log(`[부트스트랩] 포트 ${port}번에서 서버 연결을 시도합니다...`);
+  
+  const logger = app.get(Logger);
+  logger.log(`[부트스트랩] 포트 ${port}번에서 서버 연결을 시도합니다...`);
+  
   await app.listen(port);
-  console.log(`[부트스트랩] API 서버가 실행되었습니다: ${baseUrl}`);
+  logger.log(`[부트스트랩] API 서버가 실행되었습니다: ${baseUrl}`);
 }
 
 bootstrap().catch((err) => {

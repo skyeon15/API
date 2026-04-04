@@ -18,6 +18,7 @@ import { UserModule } from './users/user.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { LoggerModule } from 'nestjs-pino';
 import { ApiKey } from './admin/entities/api-key.entity.js';
 import { User } from './users/entities/user.entity.js';
 import { PaymentMethod } from './users/entities/payment-method.entity.js';
@@ -36,6 +37,60 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 @Module({
   imports: [
+    LoggerModule.forRoot({
+      pinoHttp: {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            colorize: true,
+            singleLine: false, // 객체를 여러 줄로 보기 편하게 출력
+            levelFirst: true,
+            translateTime: 'SYS:standard',
+            ignore: 'pid,hostname',
+            messageFormat: '{req.method} {req.url} {res.statusCode} - {msg}',
+          },
+        },
+        // 요청 및 응답에서 필요한 정보만 추출하고 안전하게 직렬화
+        serializers: {
+          req: (req) => {
+            const raw = req.raw || req;
+            return {
+              id: req.id,
+              method: req.method,
+              url: req.url,
+              // 'simple-array' 에러 방지를 위해 깊은 복사/직렬화 수행
+              query: JSON.parse(JSON.stringify((req as any).query || {})),
+              body: JSON.parse(JSON.stringify(raw.body || {})),
+              remoteAddress: raw.headers?.['x-forwarded-for'] || raw.socket?.remoteAddress,
+            };
+          },
+          res: (res) => {
+            const raw = (res as any).raw || res;
+            return {
+              statusCode: res.statusCode,
+              body: raw.body || (res as any).body,
+            };
+          },
+        },
+        redact: {
+          paths: [
+            'req.body.password',
+            'req.body.token',
+            'req.body.secret',
+            'req.body.api_key',
+            'req.body.apiKey',
+            'req.headers.authorization',
+          ],
+          censor: '***',
+        },
+        autoLogging: {
+          ignore: (req) => req.url === '/health',
+        },
+        // 성공/실패 메시지 커스텀
+        customSuccessMessage: (req, res) => `Request completed`,
+        customErrorMessage: (req, res, err) => `Request failed: ${err.message}`,
+      },
+    }),
     TypeOrmModule.forRootAsync({
       useFactory: () => {
         const logger = new Logger('Database');
@@ -107,3 +162,4 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
   ],
 })
 export class AppModule {}
+

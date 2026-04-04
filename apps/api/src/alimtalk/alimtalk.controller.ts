@@ -29,6 +29,9 @@ import { AlimtalkService } from './alimtalk.service.js';
 import { TemplateType } from './entities/template.entity.js';
 import { Service } from '../common/decorators/service.decorator.js';
 import { ApiKeyOrSessionGuard } from '../common/guards/api-key-or-session.guard.js';
+import { RolesGuard } from '../common/guards/roles.guard.js';
+import { Roles } from '../common/decorators/roles.decorator.js';
+import { UserRole } from '../users/entities/user.entity.js';
 import { CurrentApiKey } from '../common/decorators/api-key.decorator.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
 import { AlimtalkSendDto } from './dto/alimtalk-send.dto.js';
@@ -54,7 +57,7 @@ import { AuditContext } from '../audit/audit.service.js';
   description: '이 API 키는 해당 서비스에 대한 접근 권한이 없어요.',
 })
 @Controller('alimtalk')
-@UseGuards(ApiKeyOrSessionGuard)
+@UseGuards(ApiKeyOrSessionGuard, RolesGuard)
 @Service('alimtalk')
 export class AlimtalkController {
   constructor(private readonly alimtalkService: AlimtalkService) {}
@@ -108,6 +111,17 @@ export class AlimtalkController {
   })
   requestChannelAuth(@Body() body: { plusId: string; phone: string }) {
     return this.alimtalkService.requestChannelAuth(body.plusId, body.phone);
+  }
+
+  @Post('channels/sync')
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: '벤더사 채널 전체 동기화 (관리자 전용)',
+    description:
+      '벤더사(알리고)에 등록된 모든 채널 정보를 가져와 DB에 동기화해요.',
+  })
+  syncChannels(@CurrentApiKey() apiKey: ApiKey, @Req() req: Request) {
+    return this.alimtalkService.syncAllChannelsFromVendor(this.ctx(apiKey, req));
   }
 
   @Get('channels')
