@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useRouter, usePathname } from 'next/navigation';
 import { CONFIG } from '@/lib/constants';
 
 interface User {
@@ -26,6 +27,20 @@ const API_BASE = CONFIG.API_BASE;
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // 어디서든 401이 발생하면 로그인 페이지로 이동
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      if (pathname !== '/login') {
+        router.replace(`/login?redirect=${encodeURIComponent(pathname)}`);
+      }
+    };
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, [pathname, router]);
 
   const refresh = async () => {
     try {

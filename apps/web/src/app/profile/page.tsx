@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -87,7 +88,7 @@ export default function ProfilePage() {
     setProfileError('');
     setProfileSuccess(false);
     try {
-      const res = await fetch(`${API_BASE}/auth/me`, {
+      const res = await apiFetch(`${API_BASE}/auth/me`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(profile),
@@ -113,7 +114,7 @@ export default function ProfilePage() {
   const handleUnlinkSocial = async (provider: string) => {
     if (!confirm(`${provider} 연동을 해제하시겠습니까?`)) return;
     try {
-      const res = await fetch(`${API_BASE}/auth/social/${provider}`, {
+      const res = await apiFetch(`${API_BASE}/auth/social/${provider}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -130,7 +131,7 @@ export default function ProfilePage() {
   const handleRevokeGrant = async (clientId: string) => {
     if (!confirm('이 서비스의 연결을 해제하시겠습니까? 더 이상 로그인이 불가능할 수 있습니다.')) return;
     try {
-      await fetch(`${API_BASE}/auth/grants/${clientId}`, {
+      await apiFetch(`${API_BASE}/auth/grants/${clientId}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -152,9 +153,9 @@ export default function ProfilePage() {
       <header className="border-b bg-background sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <span className="font-bold text-primary">Identity Center</span>
+            <span className="font-bold text-primary">파란대나무숲 API</span>
             <nav className="flex gap-4 text-sm">
-              <Link href="/profile" className="text-foreground font-medium">프로필 관리</Link>
+              <Link href="/profile" className="text-foreground font-medium">프로필</Link>
               <Link href="/manage" className="text-muted-foreground hover:text-foreground">관리 콘솔</Link>
               <Link href="/alimtalk" className="text-muted-foreground hover:text-foreground">알림톡</Link>
             </nav>

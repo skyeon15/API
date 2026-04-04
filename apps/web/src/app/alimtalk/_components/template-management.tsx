@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -29,18 +30,17 @@ const API_BASE = CONFIG.API_BASE;
 type TemplateType = '기본형' | '강조표기형' | '이미지형';
 
 interface Channel {
-  id: number;
-  senderKey: string;
+  id: string;
   name: string;
   plusId: string;
   isActive: boolean;
 }
 
 interface Template {
-  id: number;
+  id: string;
   code: string;
   name: string;
-  channelId: number;
+  channelId: string;
   channel?: Channel;
   type: TemplateType;
   title: string | null;
@@ -61,7 +61,7 @@ interface Button {
 }
 
 interface TemplateFormData {
-  channelId: number | '';
+  channelId: string | '';
   name: string;
   type: TemplateType;
   content: string;
@@ -112,7 +112,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const [selectedChannelId, setSelectedChannelId] = useState<number | ''>('');
+  const [selectedChannelId, setSelectedChannelId] = useState<string | ''>('');
   const [showLive, setShowLive] = useState(false);
 
   const [showModal, setShowModal] = useState(false);
@@ -149,11 +149,12 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     isError: boolean;
   }>({ show: false, title: '', message: '', isError: false });
 
-  const apiFetch = async (url: string, options: RequestInit = {}) => {
+  const callApi = async (url: string, options: RequestInit = {}) => {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
-    const res = await fetch(`${API_BASE}${url}`, {
+    const res = await apiFetch(`${API_BASE}${url}`, {
       ...options,
+      credentials: 'include',
       headers: { ...headers, ...(options.headers as Record<string, string> | undefined) },
     });
     if (!res.ok) {
@@ -164,30 +165,40 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
   };
 
   const loadChannels = async () => {
-    if (!apiKey) return;
     try {
-      const json = await apiFetch('/alimtalk/channels');
+      const json = await callApi('/alimtalk/channels');
       setChannels(json.data ?? json);
     } catch { /* 조용히 처리 */ }
   };
 
   const loadTemplates = async () => {
-    if (!apiKey) return;
     setLoading(true);
     setError(null);
     try {
       const params = new URLSearchParams();
       if (selectedChannelId) {
-        if (showLive) {
-          const ch = channels.find((c) => c.id === selectedChannelId);
-          if (ch) params.set('senderKey', ch.senderKey);
-        } else {
-          params.set('channelId', String(selectedChannelId));
-        }
+        params.set('channelId', selectedChannelId);
       }
-      const endpoint = showLive ? '/alimtalk/templates/live' : '/alimtalk/templates';
-      const json = await apiFetch(`${endpoint}?${params}`);
-      setTemplates(json.data ?? json);
+      if (showLive) {
+        const json = await callApi(`/alimtalk/templates/live?${params}`);
+        const list: any[] = json.list ?? json.data ?? [];
+        setTemplates(list.map((t) => ({
+          id: t.code,
+          code: t.code,
+          name: t.name,
+          channelId: selectedChannelId,
+          type: t.type === 'IM' ? '이미지형' : t.type === 'EX' ? '강조표기형' : '기본형',
+          title: t.title ?? null,
+          subtitle: t.subtitle ?? null,
+          content: t.content ?? '',
+          buttons: t.buttons ?? null,
+          inspStatus: t.inspStatus ?? '',
+          createdAt: t.createdAt ?? '',
+        })));
+      } else {
+        const json = await callApi(`/alimtalk/templates?${params}`);
+        setTemplates(json.data ?? json);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -202,7 +213,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     if (!selectedChannelId) return;
     setLoading(true);
     try {
-      await apiFetch('/alimtalk/templates/sync', {
+      await callApi('/alimtalk/templates/sync', {
         method: 'POST',
         body: JSON.stringify({ channelId: selectedChannelId }),
       });
@@ -286,7 +297,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     setError(null);
     setSuccess(null);
     try {
-      await apiFetch('/alimtalk/templates', {
+      await callApi('/alimtalk/templates', {
         method: 'POST',
         body: JSON.stringify({
           channelId: Number(formData.channelId),
@@ -318,7 +329,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     setError(null);
     setSuccess(null);
     try {
-      await apiFetch(`/alimtalk/templates/${encodeURIComponent(editingTemplate.code)}`, {
+      await callApi(`/alimtalk/templates/${encodeURIComponent(editingTemplate.code)}`, {
         method: 'PUT',
         body: JSON.stringify({
           name: formData.name,
@@ -346,11 +357,11 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     try {
       if (type === 'delete') {
         const t = deleteType || 'db';
-        await apiFetch(`/alimtalk/templates/${encodeURIComponent(template.code)}?type=${t}`, { method: 'DELETE' });
+        await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}?type=${t}`, { method: 'DELETE' });
         const msg = t === 'db' ? `"${template.name}" 템플릿이 목록에서 삭제되었습니다.` : `"${template.name}" 템플릿이 카카오에서 영구 삭제되었습니다.`;
         setResultModal({ show: true, title: '삭제 완료', message: msg, isError: false });
       } else if (type === 'approval') {
-        await apiFetch(`/alimtalk/templates/${encodeURIComponent(template.code)}/request`, { method: 'POST' });
+        await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}/request`, { method: 'POST' });
         setResultModal({ show: true, title: '검수 요청 완료', message: `"${template.name}" 검수 요청이 완료되었습니다.`, isError: false });
       }
       loadTemplates();
@@ -390,7 +401,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
               <Label>채널 필터</Label>
               <select
                 value={selectedChannelId}
-                onChange={(e) => setSelectedChannelId(e.target.value ? Number(e.target.value) : '')}
+                onChange={(e) => setSelectedChannelId(e.target.value)}
                 className="w-full h-9 px-3 border border-input rounded-md text-sm bg-background focus:ring-2 focus:ring-ring"
               >
                 <option value="">전체</option>
@@ -433,15 +444,9 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
         <CardContent className="space-y-3">
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          {!apiKey && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              템플릿 목록을 보려면 알림톡 권한이 있는 API 키가 필요합니다.
-            </p>
-          )}
-
           {loading && !showModal && !viewingTemplate ? (
             <p className="text-sm text-muted-foreground text-center py-4">불러오는 중...</p>
-          ) : templates.length === 0 && apiKey ? (
+          ) : templates.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-4">등록된 템플릿이 없습니다.</p>
           ) : (
             templates.map((template, index) => {

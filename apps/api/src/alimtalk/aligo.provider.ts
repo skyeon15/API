@@ -2,6 +2,8 @@ import {
   Injectable,
   Logger,
   InternalServerErrorException,
+  BadRequestException,
+  HttpException,
 } from '@nestjs/common';
 import axios from 'axios';
 
@@ -33,22 +35,27 @@ export class AligoProvider {
         form.append(key, String(value));
     }
 
-    // 보안을 위해 API 키와 사용자 ID는 마스킹 처리하여 로그 기록
-    const maskedParams = {
-      ...combinedParams,
-      apikey: '********',
-      userid: combinedParams.userid ? '********' : undefined,
-    };
-
     try {
       const { data } = await axios.post<T>(`${BASE_URL}${path}`, form, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
+      // 알리고 API 내의 응답 코드 검증 (0이 성공)
+      if (data && (data as any).code !== undefined && (data as any).code !== 0) {
+        throw new BadRequestException(
+          (data as any).message || '요청 처리 중 오류가 발생했습니다.',
+        );
+      }
+
       return data;
     } catch (error) {
-      this.logger.error(`Aligo API 오류 [${path}]: ${error.message}`);
-      throw new InternalServerErrorException(`알리고 API 호출 실패: ${path}`);
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error(`Aligo API 통신 오류 [${path}]: ${error.message}`);
+      throw new InternalServerErrorException(
+        '외부 서비스와의 통신 중 오류가 발생했습니다.',
+      );
     }
   }
 
@@ -62,13 +69,19 @@ export class AligoProvider {
     scheduledAt?: string; // YYYYMMDDHHMMSS
   }) {
     const payload: Record<string, any> = {
+      sender: process.env.API_ALIGO_SENDER || '07041383114',
       senderkey: params.senderKey,
       tpl_code: params.templateCode,
       receiver_1: params.receiverPhone.replace(/-/g, ''),
       message_1: params.content,
       failover: process.env.API_ALIGO_FAILOVER === 'N' ? 'N' : 'Y',
     };
-    if (params.title) payload.subject_1 = params.title;
+    if (params.title) {
+      payload.subject_1 = params.title;
+    } else {
+      // 대체 발송(SMS/LMS) 시 제목 누락 방지를 위해 기본값 설정
+      payload.subject_1 = '[알림톡]';
+    }
     if (params.scheduledAt) payload.sendtime = params.scheduledAt;
     if (params.buttons?.length) {
       payload.button_1 = JSON.stringify({
@@ -88,10 +101,30 @@ export class AligoProvider {
   }
 
   async getTemplates(senderKey?: string) {
-    return this.post(
+    const res = await this.post<any>(
       '/template/list/',
       senderKey ? { senderkey: senderKey } : {},
     );
+    const raw: any[] = res.list ?? res.data ?? [];
+    return {
+      ...res,
+      list: raw.map((t) => {
+        const title = t.templtTitle ?? t.tpl_title ?? null;
+        const imageUrl = t.templtImageUrl ?? t.templtImageName ?? null;
+        const type = imageUrl ? 'IM' : title ? 'EX' : 'BA';
+        return {
+          code: t.templtCode ?? t.tpl_code,
+          name: t.templtName ?? t.tpl_name,
+          content: t.templtContent ?? t.tpl_content,
+          title,
+          subtitle: t.templtSubtitle ?? t.tpl_subtitle ?? null,
+          type,
+          inspStatus: t.inspStatus ?? t.tpl_status ?? null,
+          buttons: t.buttons ?? null,
+          createdAt: t.cdate ?? null,
+        };
+      }),
+    };
   }
 
   async getHistoryDetail(mid: string) {
@@ -103,7 +136,18 @@ export class AligoProvider {
   }
 
   async listChannels() {
-    return this.post('/profile/list/');
+    const res = await this.post<any>('/profile/list/');
+    const raw: any[] = res.list ?? res.data ?? [];
+    return {
+      ...res,
+      list: raw.map((c) => ({
+        senderKey: c.senderKey ?? c.senderkey,
+        plusId: c.uuid ?? c.plusid ?? c.plus_id,
+        name: c.name,
+        categoryCode: c.catCode ?? c.categorycode ?? c.category_code,
+        status: c.status,
+      })),
+    };
   }
 
   async requestChannelAuth(plusId: string, phone: string) {

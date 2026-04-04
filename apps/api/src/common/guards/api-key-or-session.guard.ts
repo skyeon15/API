@@ -59,7 +59,7 @@ export class ApiKeyOrSessionGuard implements CanActivate {
 
       // 1-b. Try as JWT
       try {
-        const payload: { sub: number } = this.jwtService.verify(token);
+        const payload: { sub: string } = this.jwtService.verify(token);
         req['userId'] = payload.sub;
         return true;
       } catch {
@@ -71,7 +71,7 @@ export class ApiKeyOrSessionGuard implements CanActivate {
     const cookieToken: string | undefined = req.cookies?.access_token;
     if (cookieToken) {
       try {
-        const payload: { sub: number } = this.jwtService.verify(cookieToken);
+        const payload: { sub: string } = this.jwtService.verify(cookieToken);
         req['userId'] = payload.sub;
         return true;
       } catch {

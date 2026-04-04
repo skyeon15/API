@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
@@ -45,7 +46,7 @@ export default function ChannelManagement({ apiKey }: ChannelManagementProps) {
   const handleToggleActive = async (channel: Channel) => {
     setTogglingId(channel.id);
     try {
-      const res = await fetch(`${API_BASE}/alimtalk/channels/${channel.id}`, {
+      const res = await apiFetch(`${API_BASE}/alimtalk/channels/${channel.id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -72,7 +73,7 @@ export default function ChannelManagement({ apiKey }: ChannelManagementProps) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/alimtalk/channels`, {
+      const res = await apiFetch(`${API_BASE}/alimtalk/channels`, {
         headers: {
           ...(apiKey ? { Authorization: `Bearer ${apiKey}` } : {}),
         },
@@ -95,7 +96,7 @@ export default function ChannelManagement({ apiKey }: ChannelManagementProps) {
     setSyncing(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/alimtalk/channels/sync`, {
+      const res = await apiFetch(`${API_BASE}/alimtalk/channels/sync`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

@@ -1,11 +1,12 @@
 import axios, { AxiosInstance } from 'axios';
 import { Logger } from '@nestjs/common';
+import { truncateBody } from './log-utils.js';
 
 const logger = new Logger('ExternalAPI');
 
 function trySerialize(data: any) {
   if (!data) return data;
-  
+
   // URLSearchParams 처리
   if (data instanceof URLSearchParams) {
     const obj: any = {};
@@ -14,7 +15,7 @@ function trySerialize(data: any) {
     });
     return obj;
   }
-  
+
   // 이미 객체이거나 문자열인 경우 그대로 반환 (Pino가 처리)
   return data;
 }
@@ -23,10 +24,10 @@ function applyInterceptors(instance: AxiosInstance) {
   instance.interceptors.request.use((config) => {
     const { method, url, data, params } = config;
     
-    // 외부 API 요청 로깅 (structured log for nestjs-pino)
+    // 외부 API 요청 로깅
     logger.log({
-      msg: `External Request: ${method?.toUpperCase()} ${url}`,
-      req: {
+      msg: `[Outgoing Request] ${method?.toUpperCase()} ${url}`,
+      externalReq: {
         method: method?.toUpperCase(),
         url: url,
         query: params,
@@ -38,11 +39,12 @@ function applyInterceptors(instance: AxiosInstance) {
     return config;
   }, (error) => {
     logger.error({
-      msg: `External Request Error: ${error.message}`,
-      req: {
+      msg: `[Outgoing Request Error] ${error.message}`,
+      externalReq: {
         method: error.config?.method?.toUpperCase(),
         url: error.config?.url,
-      }
+      },
+      error: error.stack
     });
     return Promise.reject(error);
   });
@@ -53,14 +55,10 @@ function applyInterceptors(instance: AxiosInstance) {
     
     // 외부 API 응답 로깅
     logger.log({
-      msg: `External Response: ${config.method?.toUpperCase()} ${config.url} ${status} (${duration}ms)`,
-      res: {
+      msg: `[Outgoing Response] ${config.method?.toUpperCase()} ${config.url} ${status} (${duration}ms)`,
+      externalRes: {
         statusCode: status,
-        body: data,
-      },
-      req: {
-        method: config.method?.toUpperCase(),
-        url: config.url,
+        body: truncateBody(data),
       },
       duration
     });
@@ -72,21 +70,17 @@ function applyInterceptors(instance: AxiosInstance) {
     
     if (response) {
       logger.error({
-        msg: `External Response Error: ${config?.method?.toUpperCase()} ${config?.url} ${response.status} (${duration}ms)`,
-        res: {
+        msg: `[Outgoing Response Error] ${config?.method?.toUpperCase()} ${config?.url} ${response.status} (${duration}ms)`,
+        externalRes: {
           statusCode: response.status,
-          body: response.data,
-        },
-        req: {
-          method: config?.method?.toUpperCase(),
-          url: config?.url,
+          body: truncateBody(response.data),
         },
         duration
       });
     } else {
       logger.error({
-        msg: `External Network Error: ${error.message} (${duration}ms)`,
-        req: {
+        msg: `[Outgoing Network Error] ${error.message} (${duration}ms)`,
+        externalReq: {
           method: config?.method?.toUpperCase(),
           url: config?.url,
         },

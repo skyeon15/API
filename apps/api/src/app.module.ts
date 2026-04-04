@@ -1,9 +1,11 @@
 import { Logger, Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AdminPanelModule } from './admin/admin.module.js';
 import { IpRestrictionGuard } from './common/guards/ip-restriction.guard.js';
+import { LoggingInterceptor } from './common/logging.interceptor.js';
+import { truncateBody } from './common/log-utils.js';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -58,9 +60,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
               id: req.id,
               method: req.method,
               url: req.url,
-              // 'simple-array' 에러 방지를 위해 깊은 복사/직렬화 수행
               query: JSON.parse(JSON.stringify((req as any).query || {})),
-              body: JSON.parse(JSON.stringify(raw.body || {})),
+              body: truncateBody(JSON.parse(JSON.stringify(raw.body || {}))),
               remoteAddress: raw.headers?.['x-forwarded-for'] || raw.socket?.remoteAddress,
             };
           },
@@ -68,7 +69,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
             const raw = (res as any).raw || res;
             return {
               statusCode: res.statusCode,
-              body: raw.body || (res as any).body,
+              body: truncateBody(raw._responseBody),
             };
           },
         },
@@ -79,6 +80,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
             'req.body.secret',
             'req.body.api_key',
             'req.body.apiKey',
+            'req.body.apikey',
+            'req.body.userid',
             'req.headers.authorization',
           ],
           censor: '***',
@@ -158,6 +161,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
     {
       provide: APP_GUARD,
       useClass: IpRestrictionGuard,
+    },
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: LoggingInterceptor,
     },
   ],
 })

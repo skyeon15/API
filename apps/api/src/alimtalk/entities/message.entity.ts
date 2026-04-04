@@ -27,7 +27,7 @@ export class AlimtalkMessage extends BaseEntity {
   transactionId: string | null;
 
   @Column({ type: 'varchar', nullable: true })
-  aligoMsgId: string | null;
+  providerMessageId: string | null;
 
   @Column()
   channelId: string;

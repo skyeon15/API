@@ -1,30 +1,41 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { Button } from '@/components/ui/button';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import ChannelManagement from './_components/channel-management';
 import TemplateManagement from './_components/template-management';
+import SendAlimtalk from './_components/send-alimtalk';
 import { CONFIG } from '@/lib/constants';
+import { useState } from 'react';
 
 const API_BASE = CONFIG.API_BASE;
 
-type Tab = 'channels' | 'templates';
+type Tab = 'channels' | 'templates' | 'send';
 
-const TABS: { key: Tab; label: string }[] = [
-  { key: 'channels', label: '카카오 채널 관리' },
-  { key: 'templates', label: '템플릿 관리' },
+const TABS: { key: Tab; label: string; path: string }[] = [
+  { key: 'channels', label: '채널 관리', path: '/alimtalk/channels' },
+  { key: 'templates', label: '템플릿 관리', path: '/alimtalk/templates' },
+  { key: 'send', label: '발송', path: '/alimtalk/send' },
 ];
+
+function getTabFromPath(pathname: string): Tab {
+  if (pathname.startsWith('/alimtalk/templates')) return 'templates';
+  if (pathname.startsWith('/alimtalk/send')) return 'send';
+  return 'channels';
+}
 
 export default function AlimtalkPage() {
   const { user, loading: authLoading, logout } = useAuth();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<Tab>('channels');
+  const pathname = usePathname();
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [keyLoading, setKeyLoading] = useState(true);
+
+  const activeTab = getTabFromPath(pathname);
 
   useEffect(() => {
     if (authLoading) return;
@@ -38,7 +49,7 @@ export default function AlimtalkPage() {
   const fetchApiKey = async () => {
     setKeyLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/profile/api-keys`, { credentials: 'include' });
+      const res = await apiFetch(`${API_BASE}/profile/api-keys`, { credentials: 'include' });
       if (!res.ok) throw new Error();
       const keys: { id: number; key: string; isActive: boolean; allowedServices: string[] }[] =
         await res.json();
@@ -61,7 +72,7 @@ export default function AlimtalkPage() {
   return (
     <div className="min-h-screen bg-muted/40">
       <header className="border-b bg-background">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <span className="font-semibold">파란대나무숲 API</span>
             <nav className="flex gap-4 text-sm">
@@ -88,7 +99,7 @@ export default function AlimtalkPage() {
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+      <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         <div>
           <h1 className="text-2xl font-bold">알림톡 관리</h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -96,25 +107,12 @@ export default function AlimtalkPage() {
           </p>
         </div>
 
-        {!apiKey && (
-          <Alert>
-            <AlertDescription>
-              채널 목록 조회 및 템플릿 관리에는{' '}
-              <strong>알림톡 권한이 활성화된 API 키</strong>가 필요합니다.{' '}
-              <Link href="/manage" className="underline">
-                관리 콘솔에서 설정하기
-              </Link>{' '}
-              (채널 추가는 API 키 없이도 가능합니다)
-            </AlertDescription>
-          </Alert>
-        )}
-
         {/* 탭 */}
         <div className="flex gap-1 border-b">
           {TABS.map((tab) => (
-            <button
+            <Link
               key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
+              href={tab.path}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 activeTab === tab.key
                   ? 'border-foreground text-foreground'
@@ -122,13 +120,14 @@ export default function AlimtalkPage() {
               }`}
             >
               {tab.label}
-            </button>
+            </Link>
           ))}
         </div>
 
         <div className="space-y-4">
           {activeTab === 'channels' && <ChannelManagement apiKey={apiKey} />}
           {activeTab === 'templates' && <TemplateManagement apiKey={apiKey} />}
+          {activeTab === 'send' && <SendAlimtalk apiKey={apiKey} />}
         </div>
       </main>
     </div>

@@ -66,9 +66,6 @@ export class AlimtalkService {
     ctx: AuditContext,
   ) {
     const aligoResult = await this.aligo.addChannel(params);
-    if (aligoResult.code !== 0)
-      throw new BadRequestException(aligoResult.message);
-
     const senderKey = aligoResult.info?.senderkey ?? aligoResult.senderkey;
     const channel = await this.channelRepo.save(
       this.channelRepo.create({
@@ -126,12 +123,11 @@ export class AlimtalkService {
     }
 
     for (const vc of vendorChannels) {
-      // 알리고 응답 필드명이 대소문자나 언더바 유무가 다를 수 있으므로 유연하게 처리
-      const senderKey = vc.senderkey || vc.sender_key || vc.senderKey;
-      const plusId = vc.plusid || vc.plus_id || vc.plusId || vc.uuid;
-      const name = vc.name || vc.channel_name;
-      const categoryCode = vc.categorycode || vc.category_code || vc.categoryCode || vc.catCode;
-      const status = vc.status || vc.channel_status;
+      const senderKey = vc.senderKey;
+      const plusId = vc.plusId;
+      const name = vc.name;
+      const categoryCode = vc.categoryCode;
+      const status = vc.status;
 
       if (!senderKey) {
         this.logger.error({
@@ -153,7 +149,7 @@ export class AlimtalkService {
             plusId: plusId,
             name: name,
             categoryCode: categoryCode,
-            isActive: status === 'O',
+            isActive: status === 'A',
             createdByUserId: ctx.userId,
           }),
         );
@@ -173,7 +169,7 @@ export class AlimtalkService {
         const updateData = {
           name: name,
           categoryCode: categoryCode,
-          isActive: status === 'O',
+          isActive: status === 'A',
         };
         const hasChange =
           existing.name !== updateData.name ||
@@ -221,8 +217,11 @@ export class AlimtalkService {
     });
   }
 
-  getLiveTemplates(senderKey?: string) {
-    return this.aligo.getTemplates(senderKey);
+  async getLiveTemplates(channelId?: string) {
+    if (!channelId) return this.aligo.getTemplates();
+    const channel = await this.channelRepo.findOneBy({ id: channelId });
+    if (!channel) throw new NotFoundException('채널을 찾을 수 없어요.');
+    return this.aligo.getTemplates(channel.senderKey);
   }
 
   async syncTemplates(channelId: string, ctx: AuditContext) {
@@ -240,6 +239,7 @@ export class AlimtalkService {
       IM: TemplateType.IMAGE,
     };
 
+
     if (templates.length === 0) {
       this.logger.warn(
         `동기화할 템플릿이 없습니다. (senderKey: ${channel.senderKey})`,
@@ -248,35 +248,34 @@ export class AlimtalkService {
 
     let syncedCount = 0;
     for (const tpl of templates) {
-      const existing = await this.templateRepo.findOneBy({
-        code: tpl.tpl_code,
-      });
+      const existing = await this.templateRepo.findOneBy({ code: tpl.code });
       const data = {
-        name: tpl.tpl_name,
-        content: tpl.tpl_content,
-        title: tpl.tpl_title ?? null,
-        subtitle: tpl.tpl_subtitle ?? null,
-        inspStatus: tpl.tpl_status,
-        type: typeMap[tpl.tpl_type] ?? TemplateType.BASIC,
+        name: tpl.name,
+        content: tpl.content,
+        title: tpl.title ?? null,
+        subtitle: tpl.subtitle ?? null,
+        inspStatus: tpl.inspStatus,
+        type: typeMap[tpl.type] ?? TemplateType.BASIC,
       };
       if (existing) {
         if (ctx.userId && existing.createdByUserId !== ctx.userId) continue;
         await this.templateRepo.save(Object.assign(existing, data));
         syncedCount++;
 
-        this.logger.log(`Sync: 템플릿 업데이트됨 [${tpl.tpl_code}] ${tpl.tpl_name}`);
+        this.logger.log(`Sync: 템플릿 업데이트됨 [${tpl.code}] ${tpl.name}`);
       } else {
         await this.templateRepo.save(
           this.templateRepo.create({
             ...data,
-            code: tpl.tpl_code,
+            code: tpl.code,
             channelId,
             createdByUserId: ctx.userId,
+            ...(tpl.createdAt ? { createdAt: new Date(tpl.createdAt) } : {}),
           }),
         );
         syncedCount++;
 
-        this.logger.log(`Sync: 신규 템플릿 추가됨 [${tpl.tpl_code}] ${tpl.tpl_name}`);
+        this.logger.log(`Sync: 신규 템플릿 추가됨 [${tpl.code}] ${tpl.name}`);
       }
     }
     return { synced: syncedCount };
@@ -304,8 +303,6 @@ export class AlimtalkService {
       senderKey: channel.senderKey,
       ...dto,
     });
-    if (aligoResult.code !== 0)
-      throw new BadRequestException(aligoResult.message);
 
     const entity = this.templateRepo.create({
       code: aligoResult.tpl_code,
@@ -356,7 +353,7 @@ export class AlimtalkService {
 
     const before = { ...template };
 
-    const aligoResult = await this.aligo.updateTemplate({
+    await this.aligo.updateTemplate({
       senderKey: template.channel.senderKey,
       code,
       name: dto.name ?? template.name,
@@ -365,8 +362,6 @@ export class AlimtalkService {
       subtitle: dto.subtitle ?? template.subtitle ?? undefined,
       buttons: dto.buttons ?? template.buttons ?? undefined,
     });
-    if (aligoResult.code !== 0)
-      throw new BadRequestException(aligoResult.message);
 
     Object.assign(template, dto);
     await this.templateRepo.save(template);
@@ -395,12 +390,10 @@ export class AlimtalkService {
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
     if (type === 'kakao') {
-      const aligoResult = await this.aligo.deleteTemplate(
+      await this.aligo.deleteTemplate(
         code,
         template.channel.senderKey,
       );
-      if (aligoResult.code !== 0)
-        throw new BadRequestException(aligoResult.message);
     }
 
     const before = { isRemoved: false };
@@ -429,12 +422,10 @@ export class AlimtalkService {
     });
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
-    const aligoResult = await this.aligo.requestTemplateInspection(
+    await this.aligo.requestTemplateInspection(
       code,
       template.channel.senderKey,
     );
-    if (aligoResult.code !== 0)
-      throw new BadRequestException(aligoResult.message);
 
     template.inspStatus = 'REQ';
     await this.templateRepo.save(template);
@@ -486,63 +477,93 @@ export class AlimtalkService {
       linkPc: btn.linkPc ? this.replaceVars(btn.linkPc, vars) : btn.linkPc,
     }));
 
-    const scheduledAt = dto.scheduledAt
-      ? new Date(dto.scheduledAt)
-          .toISOString()
-          .replace(/[-:T]/g, '')
-          .slice(0, 14)
+    // 과거 시각이면 즉시 발송으로 처리
+    const scheduledDate = dto.scheduledAt ? new Date(dto.scheduledAt) : undefined;
+    const isScheduled = scheduledDate && scheduledDate > new Date();
+
+    const scheduledAt = isScheduled
+      ? scheduledDate!.toISOString().replace(/[-:T]/g, '').slice(0, 14)
       : undefined;
 
-    const aligoResult = await this.aligo.send({
-      senderKey: channel.senderKey,
-      templateCode: dto.templateCode,
-      receiverPhone: dto.receiverPhone,
-      content,
-      title,
-      buttons,
-      scheduledAt,
-    });
+    let aligoResult: any;
+    try {
+      aligoResult = await this.aligo.send({
+        senderKey: channel.senderKey,
+        templateCode: dto.templateCode,
+        receiverPhone: dto.receiverPhone,
+        content,
+        title,
+        buttons,
+        scheduledAt,
+      });
 
-    const msgEntity = this.messageRepo.create({
-      transactionId: tid,
-      aligoMsgId: aligoResult.info?.mid ?? null,
-      channelId: dto.channelId,
-      templateCode: dto.templateCode,
-      receiverPhone: dto.receiverPhone.replace(/-/g, ''),
-      content,
-      title: title ?? null,
-      subtitle: template.subtitle ?? null,
-      buttons: buttons ?? null,
-      type: dto.scheduledAt ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
-      scheduledAt: dto.scheduledAt ?? null,
-      sentAt: dto.scheduledAt ? null : new Date(),
-      apiResponse: aligoResult.message ?? null,
-      isCompleted: !dto.scheduledAt,
-      sentByUserId: ctx.userId ?? null,
-    });
-    const message = await this.messageRepo.save(msgEntity);
+      const msgEntity = this.messageRepo.create({
+        transactionId: tid,
+        providerMessageId: aligoResult.info?.mid ?? null,
+        channelId: dto.channelId,
+        templateCode: dto.templateCode,
+        receiverPhone: dto.receiverPhone.replace(/-/g, ''),
+        content,
+        title: title ?? null,
+        subtitle: template.subtitle ?? null,
+        buttons: buttons ?? null,
+        type: isScheduled ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
+        scheduledAt: isScheduled ? scheduledDate : null,
+        sentAt: isScheduled ? null : new Date(),
+        apiResponse: aligoResult.message ?? null,
+        resultCode: aligoResult.code?.toString() ?? '0',
+        resultMessage: aligoResult.message ?? 'success',
+        isCompleted: !isScheduled,
+        sentByUserId: ctx.userId ?? null,
+      });
+      const message = await this.messageRepo.save(msgEntity);
 
-    await this.auditService.log({
-      ...ctx,
-      action: AuditAction.SEND,
-      resource: AuditResource.MESSAGE,
-      resourceId: message.id,
-      after: message,
-    });
+      await this.auditService.log({
+        ...ctx,
+        action: AuditAction.SEND,
+        resource: AuditResource.MESSAGE,
+        resourceId: message.id,
+        after: message,
+      });
 
-    return {
-      tid,
-      status: 'success',
-      message: '알림톡 발송 요청이 완료되었습니다.',
-      data: {
-        messageId: message.id,
-        receiverPhone: message.receiverPhone,
-        content: message.content,
-        type: message.type,
-        scheduledAt: message.scheduledAt,
-        sentAt: message.sentAt,
-      },
-    };
+      return {
+        tid,
+        status: 'success',
+        message: isScheduled
+          ? '예약 발송이 등록되었습니다.'
+          : '알림톡 발송 요청이 완료되었습니다.',
+        data: {
+          messageId: message.id,
+          receiverPhone: message.receiverPhone,
+          content: message.content,
+          type: message.type,
+          scheduledAt: message.scheduledAt,
+          sentAt: message.sentAt,
+        },
+      };
+    } catch (error) {
+      // 발송 요청 실패 시 DB에 실패 기록 시도
+      const msgEntity = this.messageRepo.create({
+        transactionId: tid,
+        channelId: dto.channelId,
+        templateCode: dto.templateCode,
+        receiverPhone: dto.receiverPhone.replace(/-/g, ''),
+        content,
+        title: title ?? null,
+        subtitle: template.subtitle ?? null,
+        buttons: buttons ?? null,
+        type: isScheduled ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
+        scheduledAt: isScheduled ? scheduledDate : null,
+        sentAt: null,
+        apiResponse: error.message ?? null,
+        resultCode: (error as any).response?.code?.toString() ?? '-1',
+        resultMessage: error.message ?? 'Unknown error',
+        isCompleted: false,
+        sentByUserId: ctx.userId ?? null,
+      });
+      await this.messageRepo.save(msgEntity);
+      throw error;
+    }
   }
 
   async cancel(id: string, ctx: AuditContext) {
@@ -554,10 +575,8 @@ export class AlimtalkService {
     if (message.isRemoved)
       throw new BadRequestException('이미 취소된 메시지예요.');
 
-    if (message.aligoMsgId) {
-      const aligoResult = await this.aligo.cancel(message.aligoMsgId);
-      if (aligoResult.code !== 0)
-        throw new BadRequestException(aligoResult.message);
+    if (message.providerMessageId) {
+      await this.aligo.cancel(message.providerMessageId);
     }
 
     const before = { type: message.type, isRemoved: message.isRemoved };
@@ -624,7 +643,7 @@ export class AlimtalkService {
 
     const message = await this.messageRepo.findOneBy(where);
     if (!message) throw new NotFoundException('메시지를 찾을 수 없어요.');
-    if (!message.aligoMsgId) {
+    if (!message.providerMessageId) {
       return {
         tid,
         status: 'success',
@@ -638,7 +657,7 @@ export class AlimtalkService {
       };
     }
 
-    const aligoResult = await this.aligo.getHistoryDetail(message.aligoMsgId);
+    const aligoResult = await this.aligo.getHistoryDetail(message.providerMessageId);
     const detail = aligoResult.data?.[0];
     if (detail) {
       message.resultCode = detail.rslt;

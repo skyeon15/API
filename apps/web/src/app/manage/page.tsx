@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -166,7 +167,7 @@ export default function ManagePage() {
   const handleCreateApiKey = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch(`${API_BASE}/profile/api-keys`, {
+      const res = await apiFetch(`${API_BASE}/profile/api-keys`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: newKeyName }),
@@ -184,7 +185,7 @@ export default function ManagePage() {
     const prev = apiKeys.find((k) => k.id === id);
     setApiKeys((keys) => keys.map((k) => (k.id === id ? { ...k, ...data } : k)));
     try {
-      await fetch(`${API_BASE}/profile/api-keys/${id}`, {
+      await apiFetch(`${API_BASE}/profile/api-keys/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
@@ -200,7 +201,7 @@ export default function ManagePage() {
     const prev = apiKeys.find((k) => k.id === id);
     setApiKeys((keys) => keys.filter((k) => k.id !== id));
     try {
-      await fetch(`${API_BASE}/profile/api-keys/${id}`, {
+      await apiFetch(`${API_BASE}/profile/api-keys/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -222,7 +223,7 @@ export default function ManagePage() {
     const prev = payments.find((p) => p.id === id);
     setPayments((pays) => pays.filter((p) => p.id !== id));
     try {
-      await fetch(`${API_BASE}/profile/payments/${id}`, {
+      await apiFetch(`${API_BASE}/profile/payments/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -236,7 +237,7 @@ export default function ManagePage() {
     const prev = payments.find((p) => p.id === id);
     setPayments((pays) => pays.map((p) => (p.id === id ? { ...p, cardName } : p)));
     try {
-      await fetch(`${API_BASE}/profile/payments/${id}`, {
+      await apiFetch(`${API_BASE}/profile/payments/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ cardName }),
@@ -259,7 +260,7 @@ export default function ManagePage() {
     }
     setIsAddingPayment(true);
     try {
-      const res = await fetch(`${API_BASE}/profile/payments`, {
+      const res = await apiFetch(`${API_BASE}/profile/payments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -291,7 +292,7 @@ export default function ManagePage() {
     if (!newSeller.sellerId) return;
     setIsCheckingId(true);
     try {
-      const res = await fetch(`${API_BASE}/profile/sellers/check-id?sellerId=${newSeller.sellerId}`, {
+      const res = await apiFetch(`${API_BASE}/profile/sellers/check-id?sellerId=${newSeller.sellerId}`, {
         credentials: 'include',
       });
       const data = await res.json();
@@ -336,7 +337,7 @@ export default function ManagePage() {
 
     setIsAddingSeller(true);
     try {
-      const res = await fetch(`${API_BASE}/profile/sellers`, {
+      const res = await apiFetch(`${API_BASE}/profile/sellers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(newSeller),
@@ -359,7 +360,7 @@ export default function ManagePage() {
 
   const handleDeleteSeller = async (id: number) => {
     try {
-      const res = await fetch(`${API_BASE}/profile/sellers/${id}`, {
+      const res = await apiFetch(`${API_BASE}/profile/sellers/${id}`, {
         method: 'DELETE',
         credentials: 'include',
       });
@@ -382,7 +383,7 @@ export default function ManagePage() {
       <header className="border-b bg-background sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <span className="font-bold text-primary">Management Console</span>
+            <span className="font-bold text-primary">파란대나무숲 API</span>
             <nav className="flex gap-4 text-sm">
               <Link href="/profile" className="text-muted-foreground hover:text-foreground">프로필</Link>
               <Link href="/manage" className="text-foreground font-medium">관리 콘솔</Link>

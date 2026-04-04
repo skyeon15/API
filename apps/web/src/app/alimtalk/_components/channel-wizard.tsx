@@ -1,4 +1,5 @@
 'use client';
+import { apiFetch } from '@/lib/api';
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
@@ -77,7 +78,7 @@ export default function ChannelWizard({ isOpen, onClose, onSuccess }: ChannelWiz
   const loadCategories = async () => {
     setLoadingCategories(true);
     try {
-      const res = await fetch(`${API_BASE}/alimtalk/categories`, { credentials: 'include' });
+      const res = await apiFetch(`${API_BASE}/alimtalk/categories`, { credentials: 'include' });
       const json = await res.json();
       const data = json.data ?? json;
       setCategories({
@@ -97,7 +98,7 @@ export default function ChannelWizard({ isOpen, onClose, onSuccess }: ChannelWiz
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(`${API_BASE}/alimtalk/channels/auth`, {
+        const res = await apiFetch(`${API_BASE}/alimtalk/channels/auth`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -128,7 +129,7 @@ export default function ChannelWizard({ isOpen, onClose, onSuccess }: ChannelWiz
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/alimtalk/channels/auth`, {
+      const res = await apiFetch(`${API_BASE}/alimtalk/channels/auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
@@ -153,7 +154,7 @@ export default function ChannelWizard({ isOpen, onClose, onSuccess }: ChannelWiz
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/alimtalk/channels`, {
+      const res = await apiFetch(`${API_BASE}/alimtalk/channels`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',

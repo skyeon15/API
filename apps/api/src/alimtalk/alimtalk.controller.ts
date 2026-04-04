@@ -63,9 +63,11 @@ export class AlimtalkController {
   constructor(private readonly alimtalkService: AlimtalkService) {}
 
   private ctx(apiKey: ApiKey | undefined, req: Request): AuditContext {
+    // 세션 JWT userId가 있으면 우선 사용 (웹 UI 세션 로그인 기준)
+    // API 키 userId는 세션이 없을 때만 폴백
     return {
       apiKeyId: apiKey?.id,
-      userId: (apiKey?.userId ?? req['userId'] ?? undefined) as
+      userId: (req['userId'] ?? apiKey?.userId ?? undefined) as
         | string
         | undefined,
       ip: req.ip,
@@ -184,12 +186,12 @@ export class AlimtalkController {
     description: '최신 템플릿 목록을 직접 조회해요.',
   })
   @ApiQuery({
-    name: 'senderKey',
+    name: 'channelId',
     required: false,
-    description: 'SenderKey로 필터링',
+    description: '채널 ID로 필터링',
   })
-  getLiveTemplates(@Query('senderKey') senderKey?: string) {
-    return this.alimtalkService.getLiveTemplates(senderKey);
+  getLiveTemplates(@Query('channelId') channelId?: string) {
+    return this.alimtalkService.getLiveTemplates(channelId);
   }
 
   @Post('templates/sync')
