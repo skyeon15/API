@@ -297,7 +297,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     setError(null);
     setSuccess(null);
     try {
-      await callApi('/alimtalk/templates', {
+      const res = await callApi('/alimtalk/templates', {
         method: 'POST',
         body: JSON.stringify({
           channelId: Number(formData.channelId),
@@ -309,7 +309,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
           buttons: formData.buttons.length > 0 ? formData.buttons : undefined,
         }),
       });
-      setSuccess('템플릿이 생성되었습니다.');
+      setSuccess(res.message || '템플릿이 생성되었습니다.');
       setTimeout(() => { setShowModal(false); resetForm(); setSuccess(null); }, 1200);
       loadTemplates();
     } catch (err: any) {
@@ -329,7 +329,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     setError(null);
     setSuccess(null);
     try {
-      await callApi(`/alimtalk/templates/${encodeURIComponent(editingTemplate.code)}`, {
+      const res = await callApi(`/alimtalk/templates/${encodeURIComponent(editingTemplate.code)}`, {
         method: 'PUT',
         body: JSON.stringify({
           name: formData.name,
@@ -339,7 +339,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
           buttons: formData.buttons.length > 0 ? formData.buttons : undefined,
         }),
       });
-      setSuccess('템플릿이 수정되었습니다.');
+      setSuccess(res.message || '템플릿이 수정되었습니다.');
       setTimeout(() => { setShowModal(false); setEditingTemplate(null); resetForm(); setSuccess(null); }, 1200);
       loadTemplates();
     } catch (err: any) {
@@ -357,12 +357,12 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     try {
       if (type === 'delete') {
         const t = deleteType || 'db';
-        await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}?type=${t}`, { method: 'DELETE' });
-        const msg = t === 'db' ? `"${template.name}" 템플릿이 목록에서 삭제되었습니다.` : `"${template.name}" 템플릿이 카카오에서 영구 삭제되었습니다.`;
-        setResultModal({ show: true, title: '삭제 완료', message: msg, isError: false });
+        const res = await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}?type=${t}`, { method: 'DELETE' });
+        const defaultMsg = t === 'db' ? `"${template.name}" 템플릿이 목록에서 삭제되었습니다.` : `"${template.name}" 템플릿이 카카오에서 영구 삭제되었습니다.`;
+        setResultModal({ show: true, title: '삭제 완료', message: res.message || defaultMsg, isError: false });
       } else if (type === 'approval') {
-        await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}/request`, { method: 'POST' });
-        setResultModal({ show: true, title: '검수 요청 완료', message: `"${template.name}" 검수 요청이 완료되었습니다.`, isError: false });
+        const res = await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}/request`, { method: 'POST' });
+        setResultModal({ show: true, title: '검수 요청 완료', message: res.message || `"${template.name}" 검수 요청이 완료되었습니다.`, isError: false });
       }
       loadTemplates();
     } catch (err: any) {
@@ -539,7 +539,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
                   <Label>카카오 채널 <span className="text-destructive">*</span></Label>
                   <select
                     value={formData.channelId}
-                    onChange={(e) => { setFormData((prev) => ({ ...prev, channelId: Number(e.target.value) })); setValidationErrors((prev) => ({ ...prev, channelId: '' })); }}
+                    onChange={(e) => { setFormData((prev) => ({ ...prev, channelId: e.target.value })); setValidationErrors((prev) => ({ ...prev, channelId: '' })); }}
                     disabled={!!editingTemplate}
                     className={`w-full h-9 px-3 border rounded-md text-sm bg-background focus:ring-2 focus:ring-ring disabled:opacity-50 ${validationErrors.channelId ? 'border-destructive' : 'border-input'}`}
                   >

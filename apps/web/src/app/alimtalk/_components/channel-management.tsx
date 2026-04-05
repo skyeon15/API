@@ -108,7 +108,7 @@ export default function ChannelManagement({ apiKey }: ChannelManagementProps) {
       if (!res.ok) {
         throw new Error(json.message || '채널 동기화에 실패했습니다.');
       }
-      alert(`${json.total}개의 채널 중 ${json.added}개를 새로 추가했습니다.`);
+      alert(json.message || `${json.total}개의 채널 중 ${json.added}개를 새로 추가했습니다.`);
       loadChannels();
     } catch (err: any) {
       setError(err.message);

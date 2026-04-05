@@ -215,7 +215,11 @@ const Components = {
                 options: {
                   navigation: { name: '알림톡', icon: 'Chat' },
                   properties: {
-                    buttons: { type: 'mixed' },
+                    buttons: {
+                      type: 'mixed',
+                      isArray: true,
+                      isVisible: { list: false, filter: false, show: true, edit: true },
+                    },
                   },
                 },
               },
@@ -224,7 +228,11 @@ const Components = {
                 options: {
                   navigation: { name: '알림톡', icon: 'Chat' },
                   properties: {
-                    buttons: { type: 'mixed' },
+                    buttons: {
+                      type: 'mixed',
+                      isArray: true,
+                      isVisible: { list: false, filter: false, show: true, edit: true },
+                    },
                   },
                 },
               },

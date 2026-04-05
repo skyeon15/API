@@ -307,7 +307,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: any,
   ) {
     const callbackUrl = `${CONFIG.API_URL}/auth/google/callback?finalRedirect=${finalRedirect}`;
-    
+
     let currentUserId: string | undefined;
     const token = req.cookies?.access_token;
     if (token) {

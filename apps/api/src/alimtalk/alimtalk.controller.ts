@@ -123,7 +123,9 @@ export class AlimtalkController {
       '벤더사(알리고)에 등록된 모든 채널 정보를 가져와 DB에 동기화해요.',
   })
   syncChannels(@CurrentApiKey() apiKey: ApiKey, @Req() req: Request) {
-    return this.alimtalkService.syncAllChannelsFromVendor(this.ctx(apiKey, req));
+    return this.alimtalkService.syncAllChannelsFromVendor(
+      this.ctx(apiKey, req),
+    );
   }
 
   @Get('channels')

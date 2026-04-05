@@ -60,13 +60,14 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
               id: req.id,
               method: req.method,
               url: req.url,
-              query: JSON.parse(JSON.stringify((req as any).query || {})),
+              query: JSON.parse(JSON.stringify(req.query || {})),
               body: truncateBody(JSON.parse(JSON.stringify(raw.body || {}))),
-              remoteAddress: raw.headers?.['x-forwarded-for'] || raw.socket?.remoteAddress,
+              remoteAddress:
+                raw.headers?.['x-forwarded-for'] || raw.socket?.remoteAddress,
             };
           },
           res: (res) => {
-            const raw = (res as any).raw || res;
+            const raw = res.raw || res;
             return {
               statusCode: res.statusCode,
               body: truncateBody(raw._responseBody),
@@ -169,4 +170,3 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
   ],
 })
 export class AppModule {}
-

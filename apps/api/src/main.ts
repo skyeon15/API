@@ -62,7 +62,7 @@ function checkEnvVars() {
 async function bootstrap() {
   checkEnvVars();
   console.log('[BOOTSTRAP] Starting Nest application...');
-  
+
   // Axios 전역 로거 설정
   setupAxiosLogger();
 
@@ -115,10 +115,10 @@ async function bootstrap() {
 
   const port = process.env.API_PORT || 10151;
   const baseUrl = process.env.API_URL || `http://localhost:${port}`;
-  
+
   const logger = app.get(Logger);
   logger.log(`[부트스트랩] 포트 ${port}번에서 서버 연결을 시도합니다...`);
-  
+
   await app.listen(port);
   logger.log(`[부트스트랩] API 서버가 실행되었습니다: ${baseUrl}`);
 }

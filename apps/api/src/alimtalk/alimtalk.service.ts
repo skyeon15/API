@@ -43,7 +43,10 @@ export class AlimtalkService {
   async getChannels(userId?: string) {
     const where: FindOptionsWhere<AlimtalkChannel> = {};
     if (userId) where.createdByUserId = userId;
-    const channels = await this.channelRepo.find({ where, order: { createdAt: 'DESC' } });
+    const channels = await this.channelRepo.find({
+      where,
+      order: { createdAt: 'DESC' },
+    });
     return channels.map(({ senderKey: _, ...rest }) => rest);
   }
 
@@ -182,7 +185,9 @@ export class AlimtalkService {
           await this.channelRepo.save(existing);
           updatedCount++;
 
-          this.logger.log(`Sync: 기존 채널 정보 업데이트됨 [${senderKey}] ${name}`);
+          this.logger.log(
+            `Sync: 기존 채널 정보 업데이트됨 [${senderKey}] ${name}`,
+          );
 
           await this.auditService.log({
             ...ctx,
@@ -239,7 +244,6 @@ export class AlimtalkService {
       IM: TemplateType.IMAGE,
     };
 
-
     if (templates.length === 0) {
       this.logger.warn(
         `동기화할 템플릿이 없습니다. (senderKey: ${channel.senderKey})`,
@@ -254,6 +258,7 @@ export class AlimtalkService {
         content: tpl.content,
         title: tpl.title ?? null,
         subtitle: tpl.subtitle ?? null,
+        buttons: tpl.buttons ?? null,
         inspStatus: tpl.inspStatus,
         type: typeMap[tpl.type] ?? TemplateType.BASIC,
       };
@@ -390,10 +395,7 @@ export class AlimtalkService {
     if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
     if (type === 'kakao') {
-      await this.aligo.deleteTemplate(
-        code,
-        template.channel.senderKey,
-      );
+      await this.aligo.deleteTemplate(code, template.channel.senderKey);
     }
 
     const before = { isRemoved: false };
@@ -442,7 +444,7 @@ export class AlimtalkService {
   // ── 발송 ──────────────────────────────────────────────────────────────────
 
   private replaceVars(text: string, vars: Record<string, string>): string {
-    return text.replace(/#\{([^}]+)\}/g, (_, key) => vars[key] ?? `#{${key}}`);
+    return text.replace(/#\{([^}]+)\}/g, (_, key) => vars[key] ?? '');
   }
 
   async send(
@@ -471,18 +473,34 @@ export class AlimtalkService {
     const title = template.title
       ? this.replaceVars(template.title, vars)
       : undefined;
-    const buttons = template.buttons?.map((btn) => ({
-      ...btn,
-      linkMo: btn.linkMo ? this.replaceVars(btn.linkMo, vars) : btn.linkMo,
-      linkPc: btn.linkPc ? this.replaceVars(btn.linkPc, vars) : btn.linkPc,
-    }));
+    const subtitle = template.subtitle
+      ? this.replaceVars(template.subtitle, vars)
+      : undefined;
+    const buttons = template.buttons?.map((btn) => {
+      const linkMo = btn.linkMo || btn.linkM || btn.link_mobile;
+      const linkPc = btn.linkPc || btn.linkP || btn.link_pc;
+      const subbedMo = linkMo ? this.replaceVars(linkMo, vars) : linkMo;
+      const subbedPc = linkPc ? this.replaceVars(linkPc, vars) : linkPc;
+      
+      return {
+        ...btn,
+        name: btn.name ? this.replaceVars(btn.name, vars) : btn.name,
+        // 모든 변형 필드에 치환된 값을 선언하여 AligoProvider가 항상 새 값을 보게 함
+        linkMo: subbedMo,
+        linkM: subbedMo,
+        linkPc: subbedPc,
+        linkP: subbedPc,
+      };
+    });
 
     // 과거 시각이면 즉시 발송으로 처리
-    const scheduledDate = dto.scheduledAt ? new Date(dto.scheduledAt) : undefined;
+    const scheduledDate = dto.scheduledAt
+      ? new Date(dto.scheduledAt)
+      : undefined;
     const isScheduled = scheduledDate && scheduledDate > new Date();
 
     const scheduledAt = isScheduled
-      ? scheduledDate!.toISOString().replace(/[-:T]/g, '').slice(0, 14)
+      ? scheduledDate.toISOString().replace(/[-:T]/g, '').slice(0, 14)
       : undefined;
 
     let aligoResult: any;
@@ -493,6 +511,7 @@ export class AlimtalkService {
         receiverPhone: dto.receiverPhone,
         content,
         title,
+        subtitle,
         buttons,
         scheduledAt,
       });
@@ -556,7 +575,7 @@ export class AlimtalkService {
         scheduledAt: isScheduled ? scheduledDate : null,
         sentAt: null,
         apiResponse: error.message ?? null,
-        resultCode: (error as any).response?.code?.toString() ?? '-1',
+        resultCode: error.response?.code?.toString() ?? '-1',
         resultMessage: error.message ?? 'Unknown error',
         isCompleted: false,
         sentByUserId: ctx.userId ?? null,
@@ -657,7 +676,9 @@ export class AlimtalkService {
       };
     }
 
-    const aligoResult = await this.aligo.getHistoryDetail(message.providerMessageId);
+    const aligoResult = await this.aligo.getHistoryDetail(
+      message.providerMessageId,
+    );
     const detail = aligoResult.data?.[0];
     if (detail) {
       message.resultCode = detail.rslt;

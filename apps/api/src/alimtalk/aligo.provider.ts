@@ -41,7 +41,11 @@ export class AligoProvider {
       });
 
       // 알리고 API 내의 응답 코드 검증 (0이 성공)
-      if (data && (data as any).code !== undefined && (data as any).code !== 0) {
+      if (
+        data &&
+        (data as any).code !== undefined &&
+        (data as any).code !== 0
+      ) {
         throw new BadRequestException(
           (data as any).message || '요청 처리 중 오류가 발생했습니다.',
         );
@@ -65,6 +69,7 @@ export class AligoProvider {
     receiverPhone: string;
     content: string;
     title?: string;
+    subtitle?: string;
     buttons?: Record<string, any>[];
     scheduledAt?: string; // YYYYMMDDHHMMSS
   }) {
@@ -77,34 +82,54 @@ export class AligoProvider {
       failover: process.env.API_ALIGO_FAILOVER === 'N' ? 'N' : 'Y',
     };
 
-    const title = params.title || '[알림톡]';
-    payload.subject_1 = title;
-    payload.fsubject_1 = title; // 대체발송 제목 필수값 대응
+    // 템플릿 정보 매핑 (상단 헤더: subject_1, 강조 제목: emtitle_1)
+    // 현재 DB의 title이 강조 제목(tpl_title), subtitle이 헤더(tpl_subtitle)로 동기화되어 있음
+    if (params.subtitle) {
+      payload.subject_1 = params.subtitle;
+    }
+    
+    if (params.title) {
+      payload.emtitle_1 = params.title;
+      // 대체발송(LMS) 제목은 강조제목이 있다면 이를 우선 사용
+      payload.fsubject_1 = params.title;
+    } else if (!payload.fsubject_1) {
+      payload.fsubject_1 = '[알림톡]';
+    }
 
     // 대체발송 본문 구성 (버튼 URL 포함)
     let fmessage = params.content;
-    if (params.buttons?.length) {
+
+    // 제목/부제목이 있다면 대체발송 본문 상단에 추가 (시각적 일관성)
+    if (params.title || params.subtitle) {
+      const header = [params.title, params.subtitle].filter(Boolean).join('\n');
+      fmessage = `${header}\n\n${fmessage}`;
+    }
+
+    if (params.buttons && params.buttons.length > 0) {
       const buttonLinks = params.buttons
-        .filter((btn) => btn.linkMo || btn.linkPc)
-        .map((btn) => `- ${btn.name}: ${btn.linkMo || btn.linkPc}`)
+        .filter((btn) => btn.linkMo || btn.linkPc || btn.linkM || btn.linkP)
+        .map((btn) => `- ${btn.name}: ${btn.linkMo || btn.linkPc || btn.linkM || btn.linkP}`)
         .join('\n');
       if (buttonLinks) {
         fmessage += `\n\n${buttonLinks}`;
       }
-    }
-    payload.fmessage_1 = fmessage;
-
-    if (params.scheduledAt) payload.sendtime = params.scheduledAt;
-    if (params.buttons?.length) {
+      
+      // 알림톡 버튼 JSON 구성 (linkMo, linkPc 필드 규격 준수)
       payload.button_1 = JSON.stringify({
-        button: params.buttons.map((btn) => ({
-          name: btn.name,
-          linkType: btn.linkType,
-          linkM: btn.linkMo,
-          linkP: btn.linkPc,
-        })),
+        button: params.buttons.map((btn) => {
+          const { linkM, linkP, link_mobile, link_pc, ...rest } = btn;
+          return {
+            ...rest,
+            linkMo: btn.linkMo || linkM || link_mobile,
+            linkPc: btn.linkPc || linkP || link_pc,
+          };
+        }),
       });
     }
+
+    payload.fmessage_1 = fmessage;
+    if (params.scheduledAt) payload.sendtime = params.scheduledAt;
+
     return this.post('/alimtalk/send/', payload);
   }
 

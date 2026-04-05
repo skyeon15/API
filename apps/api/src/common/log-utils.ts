@@ -5,7 +5,9 @@ export function truncateBody(data: any, depth = 0): any {
   if (data === null || data === undefined) return data;
 
   if (Array.isArray(data)) {
-    const preview = data.slice(0, MAX_ARRAY_PREVIEW).map((item) => truncateBody(item, depth + 1));
+    const preview = data
+      .slice(0, MAX_ARRAY_PREVIEW)
+      .map((item) => truncateBody(item, depth + 1));
     if (data.length > MAX_ARRAY_PREVIEW) {
       return [...preview, `... (${data.length - MAX_ARRAY_PREVIEW} more)`];
     }
@@ -21,7 +23,10 @@ export function truncateBody(data: any, depth = 0): any {
   }
 
   if (typeof data === 'string' && data.length > MAX_BODY_STRING_LENGTH) {
-    return data.slice(0, MAX_BODY_STRING_LENGTH) + `... (${data.length - MAX_BODY_STRING_LENGTH} more chars)`;
+    return (
+      data.slice(0, MAX_BODY_STRING_LENGTH) +
+      `... (${data.length - MAX_BODY_STRING_LENGTH} more chars)`
+    );
   }
 
   return data;

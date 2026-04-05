@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,8 +12,21 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { CONFIG } from '@/lib/constants';
+import AlimtalkPreview from './preview';
 
 const API_BASE = CONFIG.API_BASE;
+
+interface AlimtalkButton {
+  name: string;
+  linkType?: string;
+  linkMo?: string;
+  linkPc?: string;
+  linkM?: string;
+  linkP?: string;
+  linkAnd?: string;
+  linkIos?: string;
+  [key: string]: any;
+}
 
 interface Channel {
   id: string;
@@ -29,6 +42,9 @@ interface Template {
   channelId: string;
   content: string;
   title: string | null;
+  subtitle: string | null;
+  buttons: AlimtalkButton[] | null;
+  type: string;
   inspStatus: string;
 }
 
@@ -36,8 +52,9 @@ interface SendAlimtalkProps {
   apiKey: string | null;
 }
 
-function extractVariables(text: string): string[] {
-  const matches = text.match(/#\{([^}]+)\}/g) ?? [];
+function extractVariables(items: (string | null | undefined)[]): string[] {
+  const combined = items.filter(Boolean).join(' ');
+  const matches = combined.match(/#\{([^}]+)\}/g) ?? [];
   return [...new Set(matches.map((m) => m.slice(2, -1)))];
 }
 
@@ -73,29 +90,56 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
   }, [apiKey]);
 
   useEffect(() => {
-    if (!selectedChannelId) { setTemplates([]); setSelectedTemplate(null); return; }
+    if (!selectedChannelId) {
+      setTemplates([]);
+      setSelectedTemplate(null);
+      return;
+    }
     callApi(`/alimtalk/templates?channelId=${selectedChannelId}`)
-      .then((json) => setTemplates((json.data ?? json).filter((t: Template) => t.inspStatus === 'APR')))
+      .then((json) =>
+        setTemplates((json.data ?? json).filter((t: Template) => t.inspStatus === 'APR')),
+      )
       .catch(() => {});
     setSelectedTemplate(null);
   }, [selectedChannelId]);
 
-  useEffect(() => {
-    if (!selectedTemplate) { setVariables({}); return; }
-    const vars = extractVariables(selectedTemplate.content + (selectedTemplate.title ?? ''));
-    setVariables(Object.fromEntries(vars.map((v) => [v, ''])));
+  // 사용 중인 변수 목록 추출 (필드/버튼 포함)
+  const varKeys = useMemo(() => {
+    if (!selectedTemplate) return [];
+    const buttonTexts = (selectedTemplate.buttons ?? []).flatMap((btn) => [
+      btn.name,
+      btn.linkMo,
+      btn.linkPc,
+      btn.linkM,
+      btn.linkP,
+    ]);
+    return extractVariables([
+      selectedTemplate.content,
+      selectedTemplate.title,
+      selectedTemplate.subtitle,
+      ...buttonTexts,
+    ]);
   }, [selectedTemplate]);
 
-  const preview = selectedTemplate
-    ? selectedTemplate.content.replace(/#\{([^}]+)\}/g, (_, k) => variables[k] || `#{${k}}`)
-    : '';
+  useEffect(() => {
+    if (!selectedTemplate) {
+      setVariables({});
+      return;
+    }
+    setVariables(Object.fromEntries(varKeys.map((v) => [v, ''])));
+  }, [selectedTemplate, varKeys]);
+
+  const replaceVars = (text: string | null | undefined) => {
+    if (!text) return text ?? '';
+    return text.replace(/#\{([^}]+)\}/g, (_, k) => variables[k] || `#{${k}}`);
+  };
 
   const handleSend = async () => {
     if (!selectedTemplate || !receiverPhone || !selectedChannelId) return;
     setLoading(true);
     setResult(null);
     try {
-      await callApi('/alimtalk/send', {
+      const res = await callApi('/alimtalk/send', {
         method: 'POST',
         body: JSON.stringify({
           channelId: selectedChannelId,
@@ -105,9 +149,14 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
           ...(scheduledAt ? { scheduledAt } : {}),
         }),
       });
-      setResult({ success: true, message: scheduledAt ? '예약 발송이 등록되었습니다.' : '발송이 완료되었습니다.' });
+      setResult({
+        success: true,
+        message:
+          res.message ||
+          (scheduledAt ? '예약 발송이 등록되었습니다.' : '발송이 완료되었습니다.'),
+      });
       setReceiverPhone('');
-      setVariables(Object.fromEntries(Object.keys(variables).map((k) => [k, ''])));
+      setVariables(Object.fromEntries(varKeys.map((k) => [k, ''])));
       setScheduledAt('');
     } catch (err: any) {
       setResult({ success: false, message: err.message });
@@ -116,12 +165,9 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
     }
   };
 
-  const varKeys = selectedTemplate
-    ? extractVariables(selectedTemplate.content + (selectedTemplate.title ?? ''))
-    : [];
-
   return (
-    <div className="space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+      {/* 발송 설정 카드 */}
       <Card>
         <CardHeader>
           <CardTitle>알림톡 발송</CardTitle>
@@ -137,9 +183,13 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
               className="w-full h-9 px-3 border border-input rounded-md text-sm bg-background"
             >
               <option value="">채널 선택</option>
-              {channels.filter((ch) => ch.isActive).map((ch) => (
-                <option key={ch.id} value={ch.id}>{ch.name} ({ch.plusId})</option>
-              ))}
+              {channels
+                .filter((ch) => ch.isActive)
+                .map((ch) => (
+                  <option key={ch.id} value={ch.id}>
+                    {ch.name} ({ch.plusId})
+                  </option>
+                ))}
             </select>
           </div>
 
@@ -148,13 +198,17 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
             <Label>템플릿</Label>
             <select
               value={selectedTemplate?.code ?? ''}
-              onChange={(e) => setSelectedTemplate(templates.find((t) => t.code === e.target.value) ?? null)}
+              onChange={(e) =>
+                setSelectedTemplate(templates.find((t) => t.code === e.target.value) ?? null)
+              }
               disabled={!selectedChannelId}
               className="w-full h-9 px-3 border border-input rounded-md text-sm bg-background disabled:opacity-50"
             >
               <option value="">템플릿 선택 (승인된 항목만 표시)</option>
               {templates.map((t) => (
-                <option key={t.code} value={t.code}>{t.name} ({t.code})</option>
+                <option key={t.code} value={t.code}>
+                  {t.name} ({t.code})
+                </option>
               ))}
             </select>
           </div>
@@ -164,33 +218,27 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
               {/* 변수 입력 */}
               {varKeys.length > 0 && (
                 <div className="space-y-2">
-                  <Label>변수</Label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center justify-between">
+                    <Label>치환 변수 입력</Label>
+                    <span className="text-[10px] text-muted-foreground">본문 및 버튼 포함</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 p-3 border rounded-lg bg-muted/30">
                     {varKeys.map((key) => (
                       <div key={key} className="space-y-1">
-                        <Label className="text-xs text-muted-foreground">#{`{${key}}`}</Label>
+                        <Label className="text-[10px] text-muted-foreground truncate block">#{`{${key}}`}</Label>
                         <Input
                           value={variables[key] ?? ''}
-                          onChange={(e) => setVariables((prev) => ({ ...prev, [key]: e.target.value }))}
+                          onChange={(e) =>
+                            setVariables((prev) => ({ ...prev, [key]: e.target.value }))
+                          }
                           placeholder={key}
-                          className="h-8 text-sm"
+                          className="h-8 text-xs focus-visible:ring-1"
                         />
                       </div>
                     ))}
                   </div>
                 </div>
               )}
-
-              {/* 미리보기 */}
-              <div className="space-y-1.5">
-                <Label>미리보기</Label>
-                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-md text-sm whitespace-pre-wrap font-sans leading-relaxed">
-                  {selectedTemplate.title && (
-                    <p className="font-bold mb-1">{selectedTemplate.title.replace(/#\{([^}]+)\}/g, (_, k) => variables[k] || `#{${k}}`)}</p>
-                  )}
-                  {preview}
-                </div>
-              </div>
             </>
           )}
 
@@ -234,6 +282,37 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
           </Button>
         </CardContent>
       </Card>
+
+      {/* 미리보기 카드 */}
+      <div className="sticky top-6">
+        <div className="flex items-center justify-between mb-2 px-1">
+          <Label className="text-muted-foreground font-bold">미리보기</Label>
+          {selectedTemplate && (
+            <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded">
+              {selectedTemplate.type === 'EMPHASIS' ? '강조표기형' : '기본형'}
+            </span>
+          )}
+        </div>
+        {!selectedTemplate ? (
+          <div className="bg-muted aspect-[3/4] rounded-xl flex items-center justify-center text-muted-foreground text-sm border-2 border-dashed border-muted-foreground/20">
+            템플릿을 선택해 주세요.
+          </div>
+        ) : (
+          <AlimtalkPreview
+            headerTitle={channels.find((c) => c.id === selectedChannelId)?.name}
+            title={replaceVars(selectedTemplate.title)}
+            subtitle={replaceVars(selectedTemplate.subtitle)}
+            content={replaceVars(selectedTemplate.content)}
+            emtype={selectedTemplate.type === 'EMPHASIS' ? '강조표기형' : '기본형'}
+            buttons={(selectedTemplate.buttons ?? []).map((btn) => ({
+              ...btn,
+              name: replaceVars(btn.name),
+              linkMo: replaceVars(btn.linkMo || btn.linkM),
+              linkPc: replaceVars(btn.linkPc || btn.linkP),
+            }))}
+          />
+        )}
+      </div>
     </div>
   );
 }
