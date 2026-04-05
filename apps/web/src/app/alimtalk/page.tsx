@@ -9,22 +9,25 @@ import { Button } from '@/components/ui/button';
 import ChannelManagement from './_components/channel-management';
 import TemplateManagement from './_components/template-management';
 import SendAlimtalk from './_components/send-alimtalk';
+import HistoryManagement from './_components/history-management';
 import { CONFIG } from '@/lib/constants';
 import { useState } from 'react';
 
 const API_BASE = CONFIG.API_BASE;
 
-type Tab = 'channels' | 'templates' | 'send';
+type Tab = 'channels' | 'templates' | 'send' | 'history';
 
 const TABS: { key: Tab; label: string; path: string }[] = [
   { key: 'channels', label: '채널 관리', path: '/alimtalk/channels' },
   { key: 'templates', label: '템플릿 관리', path: '/alimtalk/templates' },
   { key: 'send', label: '발송', path: '/alimtalk/send' },
+  { key: 'history', label: '발송 내역', path: '/alimtalk/history' },
 ];
 
 function getTabFromPath(pathname: string): Tab {
   if (pathname.startsWith('/alimtalk/templates')) return 'templates';
   if (pathname.startsWith('/alimtalk/send')) return 'send';
+  if (pathname.startsWith('/alimtalk/history')) return 'history';
   return 'channels';
 }
 
@@ -128,6 +131,7 @@ export default function AlimtalkPage() {
           {activeTab === 'channels' && <ChannelManagement apiKey={apiKey} />}
           {activeTab === 'templates' && <TemplateManagement apiKey={apiKey} />}
           {activeTab === 'send' && <SendAlimtalk apiKey={apiKey} />}
+          {activeTab === 'history' && <HistoryManagement apiKey={apiKey} />}
         </div>
       </main>
     </div>

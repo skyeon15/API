@@ -3,6 +3,9 @@ import './admin-setup.js';
 import { config } from 'dotenv';
 import path from 'path';
 
+// 전역 타임존을 서울로 설정
+process.env.TZ = 'Asia/Seoul';
+
 // 루트 .env와 현재 디렉토리 .env를 모두 로드 시도
 config({ path: path.join(process.cwd(), '.env') });
 config({ path: path.join(process.cwd(), '../../.env') });
@@ -94,7 +97,7 @@ async function bootstrap() {
     )
     .setVersion('1.0')
     .addServer(
-      `http://localhost:${process.env.API_PORT || 10151}`,
+      `http://a1-2:${process.env.API_PORT || 10151}`,
       '로컬 개발 서버',
     )
     .addServer('https://gaon.bbforest.net', '운영 서버')
@@ -109,6 +112,14 @@ async function bootstrap() {
   // Swagger JSON 엔드포인트 제공 (프론트엔드에서 가져다 쓸 용도)
   app.use('/docs/openapi.json', (req, res) => {
     res.json(document);
+  });
+
+  // Swagger UI 설정
+  SwaggerModule.setup('docs', app, document, {
+    swaggerOptions: {
+      persistAuthorization: true,
+    },
+    customSiteTitle: '파란대나무숲 API 문서',
   });
 
   // Swagger 설정 끝

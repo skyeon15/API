@@ -78,4 +78,11 @@ export class ResultCheckDataDto {
     example: '2026-04-01T06:28:11.000Z',
   })
   sentAt: Date | null;
+
+  @ApiProperty({
+    description: '예약 시각',
+    example: '2026-04-01T06:30:00.000Z',
+    required: false,
+  })
+  scheduledAt: Date | null;
 }

@@ -6,6 +6,14 @@ import {
   HttpException,
 } from '@nestjs/common';
 import axios from 'axios';
+import dayjs from 'dayjs';
+import timezone from 'dayjs/plugin/timezone.js';
+import utc from 'dayjs/plugin/utc.js';
+import customParseFormat from 'dayjs/plugin/customParseFormat.js';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.extend(customParseFormat);
 
 const BASE_URL = 'https://kakaoapi.aligo.in/akv10';
 
@@ -63,6 +71,23 @@ export class AligoProvider {
     }
   }
 
+  /**
+   * Date 객체를 알리고 규격(KST YYYYMMDDHHMMSS)으로 변환합니다.
+   */
+  private toAligoDateFormat(date: Date): string {
+    // mm(분)과 ss(초)는 소문자여야 14자리 숫자가 정상적으로 생성됩니다.
+    return dayjs(date).tz('Asia/Seoul').format('YYYYMMDDHHmmss');
+  }
+
+  /**
+   * 알리고 날짜 문자열(KST YYYY-MM-DD HH:mm:ss)을 Date 객체로 변환합니다.
+   */
+  private parseAligoDate(str: string | null | undefined): Date | null {
+    if (!str || str === '0000-00-00 00:00:00') return null;
+    const d = dayjs.tz(str, 'YYYY-MM-DD HH:mm:ss', 'Asia/Seoul');
+    return d.isValid() ? d.toDate() : null;
+  }
+
   async send(params: {
     senderKey: string;
     templateCode: string;
@@ -71,7 +96,7 @@ export class AligoProvider {
     title?: string;
     subtitle?: string;
     buttons?: Record<string, any>[];
-    scheduledAt?: string; // YYYYMMDDHHMMSS
+    scheduledAt?: Date | string; // Date 객체 또는 YYYYMMDDHHMMSS 문자열
   }) {
     const payload: Record<string, any> = {
       sender: process.env.API_ALIGO_SENDER || '07041383114',
@@ -128,7 +153,11 @@ export class AligoProvider {
     }
 
     payload.fmessage_1 = fmessage;
-    if (params.scheduledAt) payload.sendtime = params.scheduledAt;
+    if (params.scheduledAt) {
+      payload.senddate = params.scheduledAt instanceof Date
+        ? this.toAligoDateFormat(params.scheduledAt)
+        : params.scheduledAt;
+    }
 
     return this.post('/alimtalk/send/', payload);
   }
@@ -165,7 +194,50 @@ export class AligoProvider {
   }
 
   async getHistoryDetail(mid: string) {
-    return this.post('/history/detail/', { mid });
+    const res = await this.post<any>('/history/detail/', { mid });
+    const detail = res.list?.[0] ?? res.data?.[0];
+
+    // 1. 취소 (Cancelled): API 호출은 성공했으나 메시지 정보가 없음
+    if (!detail) {
+      return {
+        mid: mid,
+        resultCode: 'CANCELLED',
+        resultMessage: '취소됨(데이터 없음)',
+        sentAt: null,
+        isCompleted: true,
+      };
+    }
+
+    // 2. 예약/대기 (Pending): 결과 값(rslt, rslt_message)이 모두 비어있는 경우
+    if (!detail.rslt && !detail.rslt_message) {
+      return {
+        mid: detail.msgid,
+        resultCode: 'PENDING',
+        resultMessage: '예약중/대기중',
+        sentAt: this.parseAligoDate(detail.sentdate),
+        isCompleted: false,
+      };
+    }
+
+    // 3. 성공 (Success): 결과 메시지가 "성공"인 경우
+    if (detail.rslt_message === '성공') {
+      return {
+        mid: detail.msgid,
+        resultCode: 'SUCCESS',
+        resultMessage: '성공',
+        sentAt: this.parseAligoDate(detail.sentdate),
+        isCompleted: true,
+      };
+    }
+
+    // 4. 실패 (Failure): 그 외 (성공이 아니면서 비어있지도 않음)
+    return {
+      mid: detail.msgid,
+      resultCode: detail.rslt || 'FAILURE',
+      resultMessage: detail.rslt_message || '실패',
+      sentAt: this.parseAligoDate(detail.sentdate),
+      isCompleted: true,
+    };
   }
 
   async getCategories() {

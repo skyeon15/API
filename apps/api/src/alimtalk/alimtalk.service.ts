@@ -499,10 +499,6 @@ export class AlimtalkService {
       : undefined;
     const isScheduled = scheduledDate && scheduledDate > new Date();
 
-    const scheduledAt = isScheduled
-      ? scheduledDate.toISOString().replace(/[-:T]/g, '').slice(0, 14)
-      : undefined;
-
     let aligoResult: any;
     try {
       aligoResult = await this.aligo.send({
@@ -513,7 +509,7 @@ export class AlimtalkService {
         title,
         subtitle,
         buttons,
-        scheduledAt,
+        scheduledAt: isScheduled ? scheduledDate : undefined,
       });
 
       const msgEntity = this.messageRepo.create({
@@ -530,9 +526,9 @@ export class AlimtalkService {
         scheduledAt: isScheduled ? scheduledDate : null,
         sentAt: isScheduled ? null : new Date(),
         apiResponse: aligoResult.message ?? null,
-        resultCode: aligoResult.code?.toString() ?? '0',
-        resultMessage: aligoResult.message ?? 'success',
-        isCompleted: !isScheduled,
+        resultCode: null,
+        resultMessage: null,
+        isCompleted: false,
         sentByUserId: ctx.userId ?? null,
       });
       const message = await this.messageRepo.save(msgEntity);
@@ -572,12 +568,15 @@ export class AlimtalkService {
         subtitle: template.subtitle ?? null,
         buttons: buttons ?? null,
         type: isScheduled ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
-        scheduledAt: isScheduled ? scheduledDate : null,
+        scheduledAt:
+          scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())
+            ? scheduledDate
+            : null,
         sentAt: null,
         apiResponse: error.message ?? null,
-        resultCode: error.response?.code?.toString() ?? '-1',
+        resultCode: 'FAILURE',
         resultMessage: error.message ?? 'Unknown error',
-        isCompleted: false,
+        isCompleted: true,
         sentByUserId: ctx.userId ?? null,
       });
       await this.messageRepo.save(msgEntity);
@@ -626,6 +625,7 @@ export class AlimtalkService {
     const qb = this.messageRepo
       .createQueryBuilder('m')
       .leftJoinAndSelect('m.channel', 'channel')
+      .leftJoinAndSelect('m.sentByUser', 'user')
       .orderBy('m.createdAt', 'DESC');
 
     if (filters.userId)
@@ -650,7 +650,55 @@ export class AlimtalkService {
       .skip((page - 1) * limit)
       .take(limit)
       .getManyAndCount();
+
+    // 미완료된 메시지 중 최근 3일 내 발송된 항목들에 대해 실시간 상태 동기화 시도
+    const now = new Date();
+    const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000);
+    const pendingItems = items.filter(
+      (item) =>
+        // !item.isCompleted && // 임시로 이미 완료된 항목도 매번 확인하도록 제거
+        item.providerMessageId &&
+        item.createdAt >= threeDaysAgo,
+    );
+
+    if (pendingItems.length > 0) {
+      // API 과부하 방지를 위해 최대 20개까지만 동기화 (한 페이지 분량)
+      const syncTargets = pendingItems.slice(0, 20);
+      await Promise.all(syncTargets.map((item) => this.syncMessageResult(item)));
+    }
+
     return { items, total, page, limit };
+  }
+
+  /**
+   * 알리고 결과 API를 호출하여 메시지 상태를 동기화하고 DB에 저장합니다.
+   */
+  private async syncMessageResult(message: AlimtalkMessage): Promise<void> {
+    if (!message.providerMessageId) return;
+
+    try {
+      const result = await this.aligo.getHistoryDetail(
+        message.providerMessageId,
+      );
+
+      if (result) {
+        message.resultCode = result.resultCode;
+        message.resultMessage = result.resultMessage;
+        message.resultCheckedAt = new Date();
+        message.isCompleted = result.isCompleted;
+
+        // 실제 발송된 시간이 있다면 업데이트
+        if (result.sentAt) {
+          message.sentAt = result.sentAt;
+        }
+
+        await this.messageRepo.save(message);
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to sync alimtalk message [${message.id}]: ${error.message}`,
+      );
+    }
   }
 
   async getResult(
@@ -672,20 +720,16 @@ export class AlimtalkService {
           checkedAt: message.resultCheckedAt,
           receiverPhone: message.receiverPhone,
           sentAt: message.sentAt,
+          scheduledAt:
+            message.scheduledAt instanceof Date &&
+            !isNaN(message.scheduledAt.getTime())
+              ? message.scheduledAt
+              : null,
         },
       };
     }
 
-    const aligoResult = await this.aligo.getHistoryDetail(
-      message.providerMessageId,
-    );
-    const detail = aligoResult.data?.[0];
-    if (detail) {
-      message.resultCode = detail.rslt;
-      message.resultMessage = detail.rslt_message;
-      message.resultCheckedAt = new Date();
-      await this.messageRepo.save(message);
-    }
+    await this.syncMessageResult(message);
 
     return {
       tid,
@@ -696,6 +740,11 @@ export class AlimtalkService {
         checkedAt: message.resultCheckedAt,
         receiverPhone: message.receiverPhone,
         sentAt: message.sentAt,
+        scheduledAt:
+          message.scheduledAt instanceof Date &&
+          !isNaN(message.scheduledAt.getTime())
+            ? message.scheduledAt
+            : null,
       },
     };
   }
