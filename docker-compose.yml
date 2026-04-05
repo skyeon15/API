@@ -5,11 +5,12 @@ services:
     container_name: pds-db-dev
     restart: always
     volumes:
-      - ./.dev-data/postgres:/var/lib/postgresql/data
+      - pds-db-data:/var/lib/postgresql/data
     environment:
       - POSTGRES_USER=admin
       - POSTGRES_PASSWORD=devpass
       - POSTGRES_DB=pds_api
+      - PGDATA=/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U admin -d pds_api"]
       interval: 5s
@@ -25,7 +26,7 @@ services:
     restart: always
     command: redis-server --appendonly yes
     volumes:
-      - ./.dev-data/redis:/data
+      - pds-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -40,54 +41,13 @@ services:
     container_name: pds-monorepo-dev
     working_dir: /app
     volumes:
-      - ./:/app               # 프로젝트 루트 전체를 마운트
+      - ./:/app
+    env_file:
+      - .env
     command: npm run dev
     ports:
-      - "10150:10150"          # Web
-      - "10151:10151"          # API
-    environment:
-      # Database
-      - API_DB_HOST=db
-      - API_DB_PORT=5432
-      - API_DB_NAME=pds_api
-      - API_DB_USER=admin
-      - API_DB_PASSWORD=devpass
-      
-      # Redis
-      - API_REDIS_HOST=redis
-      - API_REDIS_PORT=6379
-      
-      # Global config from .env
-      - API_PORT=10151
-      - API_ALLOWED_ORIGINS=https://*.bbforest.net,https://*.riri.li,https://*.hapbbi.com
-      
-      # JWT Authentication
-      - API_JWT_SECRET=e49b0bcd086588a217fac39c63f9a9ccb74d93bde63db5b13117e0ac7f6771b3cc54baaf6f0f0d748af717d3415b93b7db2b88347f60979360cef72ba881f17f
-      
-      # Aligo 알림톡 API
-      - API_ALIGO_API_KEY=kl2uj4d6o02gm40iubllqmdfknr7glml
-      - API_ALIGO_USER_ID=bbf1015
-      - API_ALIGO_FAILOVER=Y
-      
-      # Payapp API
-      - API_PAYAPP_USERID=bbf1015
-      - API_PAYAPP_LINKKEY=Hzcir5vkettuNYvbP4yE1u1DPJnCCRVaOgT+oqg6zaM=
-      - API_PAYAPP_RESELLERID=pds1015
-      
-      # Web Environment
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:10151}
-      
-      # Social Login (OAuth2)
-      - API_KAKAO_CLIENT_ID=${API_KAKAO_CLIENT_ID}
-      - API_KAKAO_CLIENT_SECRET=${API_KAKAO_CLIENT_SECRET}
-      - API_NAVER_CLIENT_ID=${API_NAVER_CLIENT_ID}
-      - API_NAVER_CLIENT_SECRET=${API_NAVER_CLIENT_SECRET}
-      - API_GOOGLE_CLIENT_ID=${API_GOOGLE_CLIENT_ID}
-      - API_GOOGLE_CLIENT_SECRET=${API_GOOGLE_CLIENT_SECRET}
-      
-      # Server URL
-      - API_URL=${API_URL:-http://localhost:10151}
-      - API_WEB_URL=${API_WEB_URL:-http://localhost:10150}
+      - "10150:10150" # Web
+      - "10151:10151" # API
     depends_on:
       db:
         condition: service_healthy
@@ -99,3 +59,7 @@ services:
 networks:
   pds-network:
     driver: bridge
+
+volumes:
+  pds-db-data:
+  pds-redis-data:

@@ -76,12 +76,24 @@ export class AligoProvider {
       message_1: params.content,
       failover: process.env.API_ALIGO_FAILOVER === 'N' ? 'N' : 'Y',
     };
-    if (params.title) {
-      payload.subject_1 = params.title;
-    } else {
-      // 대체 발송(SMS/LMS) 시 제목 누락 방지를 위해 기본값 설정
-      payload.subject_1 = '[알림톡]';
+
+    const title = params.title || '[알림톡]';
+    payload.subject_1 = title;
+    payload.fsubject_1 = title; // 대체발송 제목 필수값 대응
+
+    // 대체발송 본문 구성 (버튼 URL 포함)
+    let fmessage = params.content;
+    if (params.buttons?.length) {
+      const buttonLinks = params.buttons
+        .filter((btn) => btn.linkMo || btn.linkPc)
+        .map((btn) => `- ${btn.name}: ${btn.linkMo || btn.linkPc}`)
+        .join('\n');
+      if (buttonLinks) {
+        fmessage += `\n\n${buttonLinks}`;
+      }
     }
+    payload.fmessage_1 = fmessage;
+
     if (params.scheduledAt) payload.sendtime = params.scheduledAt;
     if (params.buttons?.length) {
       payload.button_1 = JSON.stringify({

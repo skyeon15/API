@@ -176,7 +176,7 @@ export default function ProfilePage() {
               <form onSubmit={handleUpdateProfile} className="space-y-4">
                 {profileSuccess && <Alert className="border-green-500 text-green-600"><AlertDescription>정보가 성공적으로 수정되었습니다.</AlertDescription></Alert>}
                 {profileError && <Alert variant="destructive"><AlertDescription>{profileError}</AlertDescription></Alert>}
-                
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">이름</Label>
@@ -278,7 +278,7 @@ export default function ProfilePage() {
 
           <Card>
             <CardHeader>
-              <CardTitle>계정 보안</CardTitle>
+              <CardTitle>계정 정보</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -289,8 +289,8 @@ export default function ProfilePage() {
                 <span className="text-muted-foreground">ID</span>
                 <span className="text-[10px] font-mono">{user.id}</span>
               </div>
-              <Separator className="my-2" />
-              <Button variant="destructive" className="w-full" size="sm">회원 탈퇴</Button>
+              {/* <Separator className="my-2" /> */}
+              {/* <Button variant="destructive" className="w-full" size="sm">회원 탈퇴</Button> */}
             </CardContent>
           </Card>
         </div>

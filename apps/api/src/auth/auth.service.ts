@@ -179,14 +179,32 @@ export class AuthService {
         );
       }
       // 2. 로그인 중이 아니거나, 본인 계정인 경우 (로그인 또는 연동 갱신)
+
+      // 유저 정보 보강 (기존 유저 정보가 누락된 경우 소셜 정보로 채워줌)
+      const user = socialAccount.user;
+      let updated = false;
+      if (!user.phone && profile.phone) {
+        user.phone = profile.phone;
+        updated = true;
+      }
+      if (!user.gender && profile.gender) {
+        user.gender = profile.gender;
+        updated = true;
+      }
+      if (!user.birthDate && profile.birthDate) {
+        user.birthDate = profile.birthDate;
+        updated = true;
+      }
+      if (updated) await user.save();
+
       socialAccount.rawProfile = rawData;
       socialAccount.syncedAt = new Date();
       await socialAccount.save();
-      return socialAccount.user;
+      return user;
     }
 
     // 연동된 소셜 계정이 없는 경우
-    
+
     // 1. 로그인 중인 경우 (새로운 연동)
     if (currentUserId) {
       await this.socialAccountRepo.save(
@@ -198,7 +216,25 @@ export class AuthService {
           syncedAt: new Date(),
         }),
       );
-      return this.getUserById(currentUserId);
+
+      // 이미 회원가입된 상태이므로 정보가 비어있다면 채워줌
+      const user = await this.getUserById(currentUserId);
+      let updated = false;
+      if (!user.phone && profile.phone) {
+        user.phone = profile.phone;
+        updated = true;
+      }
+      if (!user.gender && profile.gender) {
+        user.gender = profile.gender;
+        updated = true;
+      }
+      if (!user.birthDate && profile.birthDate) {
+        user.birthDate = profile.birthDate;
+        updated = true;
+      }
+      if (updated) await user.save();
+
+      return user;
     }
 
     // 2. 로그인 중이 아닌 경우 (신규 가입 또는 자동 계정 통합)
@@ -216,9 +252,28 @@ export class AuthService {
           name: profile.name || '사용자',
           email: profile.email,
           ci: profile.ci,
+          phone: profile.phone,
+          gender: profile.gender,
+          birthDate: profile.birthDate,
           profileImageUrl: profile.profileImageUrl,
         }),
       );
+    } else {
+      // 정보 업데이트 (기존 유저 정보 보강)
+      let updated = false;
+      if (!user.phone && profile.phone) {
+        user.phone = profile.phone;
+        updated = true;
+      }
+      if (!user.gender && profile.gender) {
+        user.gender = profile.gender;
+        updated = true;
+      }
+      if (!user.birthDate && profile.birthDate) {
+        user.birthDate = profile.birthDate;
+        updated = true;
+      }
+      if (updated) await user.save();
     }
 
     await this.socialAccountRepo.save(
@@ -289,12 +344,36 @@ export class AuthService {
     });
 
     const { id, kakao_account: account } = userRes.data;
+
+    let phone = account?.phone_number;
+    if (phone) {
+      // +82 10-0000-0000 -> 01000000000
+      phone = phone.replace('+82 ', '0').replace(/[- ]/g, '');
+    }
+
+    let gender = account?.gender;
+    if (gender === 'male') gender = 'M';
+    else if (gender === 'female') gender = 'F';
+    else gender = 'U';
+
+    let birthDate: string | null = null;
+    if (account?.birthyear && account?.birthday) {
+      // birthday: MMDD
+      birthDate = `${account.birthyear}-${account.birthday.slice(
+        0,
+        2,
+      )}-${account.birthday.slice(2)}`;
+    }
+
     return {
       providerUserId: String(id),
       email: account?.email,
       name: account?.profile?.nickname,
       profileImageUrl: account?.profile?.profile_image_url,
-      ci: account?.ci, // 비즈니스 채널일 경우 제공됨
+      phone,
+      gender,
+      birthDate,
+      ci: account?.ci,
       raw: userRes.data,
     };
   }
@@ -315,12 +394,32 @@ export class AuthService {
       headers: { Authorization: `Bearer ${tokenRes.data.access_token}` },
     });
 
-    const { id, email, name, profile_image, ci } = userRes.data.response;
+    const {
+      id,
+      email,
+      name,
+      profile_image,
+      ci,
+      gender,
+      mobile,
+      birthyear,
+      birthday,
+    } = userRes.data.response;
+
+    let birthDate: string | null = null;
+    if (birthyear && birthday) {
+      // birthday: MM-DD
+      birthDate = `${birthyear}-${birthday}`;
+    }
+
     return {
       providerUserId: id,
       email,
       name,
       profileImageUrl: profile_image,
+      phone: mobile ? mobile.replace(/[- ]/g, '') : null,
+      gender: gender || 'U',
+      birthDate,
       ci,
       raw: userRes.data,
     };
