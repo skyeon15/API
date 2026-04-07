@@ -23,7 +23,8 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'https://gaon.bbforest.net';
+import { CONFIG } from '@/lib/constants';
+const API_BASE = CONFIG.API_BASE;
 
 interface ApiKey {
   id: number;

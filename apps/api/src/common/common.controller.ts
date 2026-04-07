@@ -89,7 +89,7 @@ export class CommonController {
     description: '서버 시간 정보를 성공적으로 가져왔어요.',
   })
   async getTime(@Param('url') urlParam: string) {
-...
+    const url = urlParam;
     const send = new Date().getTime();
     this.logger.log(`시간 조회 요청: ${url}`);
 

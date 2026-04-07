@@ -48,11 +48,11 @@ export class AligoProvider {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
-      // 알리고 API 내의 응답 코드 검증 (0이 성공)
+      // 알리고 API 내의 응답 코드 검증 (0이 성공, 문자열 "0"도 허용)
       if (
         data &&
         (data as any).code !== undefined &&
-        (data as any).code !== 0
+        String((data as any).code) !== '0'
       ) {
         throw new BadRequestException(
           (data as any).message || '요청 처리 중 오류가 발생했습니다.',
@@ -272,12 +272,23 @@ export class AligoProvider {
     phone: string;
     categoryCode: string;
   }) {
-    return this.post('/profile/add/', {
+    const res = await this.post<any>('/profile/add/', {
       plusid: params.plusId,
       authnum: params.authNum,
       phonenumber: params.phone.replace(/-/g, ''),
       categorycode: params.categoryCode,
     });
+    this.logger.log(`addChannel raw response: ${JSON.stringify(res)}`);
+    // 알리고 응답에서 senderKey를 다양한 필드명으로 탐색하여 정규화
+    const senderKey =
+      res.senderKey ??
+      res.senderkey ??
+      res.info?.senderKey ??
+      res.info?.senderkey ??
+      res.data?.senderKey ??
+      res.data?.senderkey ??
+      null;
+    return { ...res, senderKey };
   }
 
   async addTemplate(params: {
@@ -304,7 +315,11 @@ export class AligoProvider {
     if (params.subtitle) payload.tpl_subtitle = params.subtitle;
     if (params.buttons?.length)
       payload.buttons = JSON.stringify(params.buttons);
-    return this.post('/template/add/', payload);
+    const res = await this.post<any>('/template/add/', payload);
+    return {
+      ...res,
+      tpl_code: res.tpl_code ?? res.data?.templtCode ?? res.data?.tpl_code,
+    };
   }
 
   async updateTemplate(params: {

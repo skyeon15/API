@@ -69,7 +69,7 @@ export class AlimtalkService {
     ctx: AuditContext,
   ) {
     const aligoResult = await this.aligo.addChannel(params);
-    const senderKey = aligoResult.info?.senderkey ?? aligoResult.senderkey;
+    const senderKey = aligoResult.senderKey;
     const channel = await this.channelRepo.save(
       this.channelRepo.create({
         senderKey,
@@ -381,7 +381,7 @@ export class AlimtalkService {
     return template;
   }
 
-  async deleteTemplate(code: string, type: 'db' | 'kakao', ctx: AuditContext) {
+  async deleteTemplate(code: string, type: 'db' | 'kakao', channelId: string, ctx: AuditContext) {
     const where: FindOptionsWhere<AlimtalkTemplate> = {
       code,
       isRemoved: false,
@@ -392,23 +392,33 @@ export class AlimtalkService {
       where,
       relations: ['channel'],
     });
-    if (!template) throw new NotFoundException('템플릿을 찾을 수 없어요.');
 
     if (type === 'kakao') {
-      await this.aligo.deleteTemplate(code, template.channel.senderKey);
+      const senderKey = template?.channel?.senderKey;
+      if (senderKey) {
+        await this.aligo.deleteTemplate(code, senderKey);
+      } else if (channelId) {
+        const channel = await this.channelRepo.findOneBy({ id: channelId });
+        if (!channel) throw new NotFoundException('채널을 찾을 수 없어요.');
+        await this.aligo.deleteTemplate(code, channel.senderKey);
+      } else {
+        throw new BadRequestException('채널 정보가 필요합니다.');
+      }
     }
 
-    const before = { isRemoved: false };
-    template.isRemoved = true;
-    await this.templateRepo.save(template);
-    await this.auditService.log({
-      ...ctx,
-      action: AuditAction.DELETE,
-      resource: AuditResource.TEMPLATE,
-      resourceId: template.id,
-      before,
-      after: { isRemoved: true },
-    });
+    if (template) {
+      const before = { isRemoved: false };
+      template.isRemoved = true;
+      await this.templateRepo.save(template);
+      await this.auditService.log({
+        ...ctx,
+        action: AuditAction.DELETE,
+        resource: AuditResource.TEMPLATE,
+        resourceId: template.id,
+        before,
+        after: { isRemoved: true },
+      });
+    }
   }
 
   async requestInspection(code: string, ctx: AuditContext) {

@@ -161,7 +161,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
       const json = await res.json().catch(() => ({}));
       throw new Error(json.message || `요청 실패 (${res.status})`);
     }
-    return res.json();
+    return res.json().catch(() => ({}));
   };
 
   const loadChannels = async () => {
@@ -300,7 +300,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
       const res = await callApi('/alimtalk/templates', {
         method: 'POST',
         body: JSON.stringify({
-          channelId: Number(formData.channelId),
+          channelId: formData.channelId,
           name: formData.name,
           type: formData.type,
           content: formData.content,
@@ -357,7 +357,7 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     try {
       if (type === 'delete') {
         const t = deleteType || 'db';
-        const res = await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}?type=${t}`, { method: 'DELETE' });
+        const res = await callApi(`/alimtalk/templates/${encodeURIComponent(template.code)}?type=${t}&channelId=${selectedChannelId}`, { method: 'DELETE' });
         const defaultMsg = t === 'db' ? `"${template.name}" 템플릿이 목록에서 삭제되었습니다.` : `"${template.name}" 템플릿이 카카오에서 영구 삭제되었습니다.`;
         setResultModal({ show: true, title: '삭제 완료', message: res.message || defaultMsg, isError: false });
       } else if (type === 'approval') {

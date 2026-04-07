@@ -33,6 +33,7 @@ function LoginForm() {
 
   const clientId = searchParams.get('client_id');
   const redirectUri = searchParams.get('redirect_uri');
+  const redirectPath = searchParams.get('redirect') || '/profile';
   const scope = searchParams.get('scope') || 'openid profile';
   const state = searchParams.get('state') || '';
 
@@ -65,7 +66,7 @@ function LoginForm() {
         authUrl.searchParams.set('state', state);
         window.location.href = authUrl.toString();
       } else {
-        router.replace('/profile');
+        router.replace(redirectPath);
       }
     }
   }, [user, authLoading, clientId, redirectUri, scope, state, router]);
@@ -104,9 +105,10 @@ function LoginForm() {
   };
 
   const handleSocialLogin = (provider: string) => {
-    // 소셜 로그인 후 다시 이 페이지로 돌아오도록 설정
-    const currentUrl = encodeURIComponent(window.location.href);
-    window.location.href = `${API_BASE}/auth/${provider}?redirect=${currentUrl}`;
+    // 소셜 로그인 후 다시 이 페이지로 돌아오도록 설정 (redirect 파라미터 유지)
+    const returnUrl = new URL(window.location.href);
+    returnUrl.searchParams.set('redirect', redirectPath);
+    window.location.href = `${API_BASE}/auth/${provider}?redirect=${encodeURIComponent(returnUrl.toString())}`;
   };
 
   if (authLoading || user) return null;

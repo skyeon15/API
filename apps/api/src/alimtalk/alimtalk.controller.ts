@@ -352,12 +352,14 @@ export class AlimtalkController {
   deleteTemplate(
     @Param('code') code: string,
     @Query('type') type: 'db' | 'kakao' = 'db',
+    @Query('channelId') channelId: string,
     @CurrentApiKey() apiKey: ApiKey,
     @Req() req: Request,
   ) {
     return this.alimtalkService.deleteTemplate(
       code,
       type,
+      channelId,
       this.ctx(apiKey, req),
     );
   }

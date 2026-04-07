@@ -1,5 +1,6 @@
 'use client';
 import { apiFetch } from '@/lib/api';
+import { CONFIG } from '@/lib/constants';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -13,7 +14,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL;
+const API_BASE = CONFIG.API_BASE;
 
 interface SocialAccount {
   provider: string;
@@ -75,8 +76,10 @@ export default function ProfilePage() {
         fetch(`${API_BASE}/auth/social`, { credentials: 'include' }),
         fetch(`${API_BASE}/auth/grants`, { credentials: 'include' }),
       ]);
-      setSocialAccounts(await socialRes.json());
-      setGrants(await grantRes.json());
+      const socialData = await socialRes.json();
+      setSocialAccounts(Array.isArray(socialData) ? socialData : []);
+      const grantData = await grantRes.json();
+      setGrants(Array.isArray(grantData) ? grantData : []);
     } catch (err) {
       console.error('Failed to fetch IAM data', err);
     }
