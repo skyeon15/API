@@ -38,6 +38,15 @@ export class AlimtalkTemplate extends BaseEntity {
   @Column({ type: 'enum', enum: TemplateType, default: TemplateType.BASIC })
   type: TemplateType;
 
+  @Column({ type: 'varchar', default: 'BA' })
+  tplType: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  tplAdvert: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  tplExtra: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   title: string | null;
 

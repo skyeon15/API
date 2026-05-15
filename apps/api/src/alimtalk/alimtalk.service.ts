@@ -258,9 +258,12 @@ export class AlimtalkService {
         content: tpl.content,
         title: tpl.title ?? null,
         subtitle: tpl.subtitle ?? null,
+        tplExtra: tpl.tplExtra ?? null,
+        tplAdvert: tpl.tplAdvert ?? null,
+        tplType: tpl.tplType ?? 'BA',
         buttons: tpl.buttons ?? null,
         inspStatus: tpl.inspStatus,
-        type: typeMap[tpl.type] ?? TemplateType.BASIC,
+        type: typeMap[tpl.type] ?? typeMap[tpl.tplType] ?? TemplateType.BASIC,
       };
       if (existing) {
         if (ctx.userId && existing.createdByUserId !== ctx.userId) continue;
@@ -291,6 +294,9 @@ export class AlimtalkService {
       channelId: string;
       name: string;
       type: TemplateType;
+      tplType?: string;
+      tplAdvert?: string;
+      tplExtra?: string;
       content: string;
       title?: string;
       subtitle?: string;
@@ -306,7 +312,15 @@ export class AlimtalkService {
 
     const aligoResult = await this.aligo.addTemplate({
       senderKey: channel.senderKey,
-      ...dto,
+      name: dto.name,
+      content: dto.content,
+      type: dto.type,
+      tpl_type: dto.tplType,
+      tpl_advert: dto.tplAdvert,
+      tpl_extra: dto.tplExtra,
+      title: dto.title,
+      subtitle: dto.subtitle,
+      buttons: dto.buttons,
     });
 
     const entity = this.templateRepo.create({
@@ -314,6 +328,9 @@ export class AlimtalkService {
       channelId: dto.channelId,
       name: dto.name,
       type: dto.type,
+      tplType: dto.tplType || 'BA',
+      tplAdvert: dto.tplAdvert || null,
+      tplExtra: dto.tplExtra || null,
       content: dto.content,
       title: dto.title ?? null,
       subtitle: dto.subtitle ?? null,
@@ -338,6 +355,9 @@ export class AlimtalkService {
     dto: Partial<{
       name: string;
       content: string;
+      tplType: string;
+      tplAdvert: string;
+      tplExtra: string;
       title: string;
       subtitle: string;
       buttons: Record<string, any>[];
@@ -363,6 +383,9 @@ export class AlimtalkService {
       code,
       name: dto.name ?? template.name,
       content: dto.content ?? template.content,
+      tpl_type: dto.tplType ?? template.tplType,
+      tpl_advert: dto.tplAdvert ?? template.tplAdvert ?? undefined,
+      tpl_extra: dto.tplExtra ?? template.tplExtra ?? undefined,
       title: dto.title ?? template.title ?? undefined,
       subtitle: dto.subtitle ?? template.subtitle ?? undefined,
       buttons: dto.buttons ?? template.buttons ?? undefined,
@@ -486,6 +509,12 @@ export class AlimtalkService {
     const subtitle = template.subtitle
       ? this.replaceVars(template.subtitle, vars)
       : undefined;
+    const tplExtra = template.tplExtra
+      ? this.replaceVars(template.tplExtra, vars)
+      : undefined;
+    const tplAdvert = template.tplAdvert
+      ? this.replaceVars(template.tplAdvert, vars)
+      : undefined;
     const buttons = template.buttons?.map((btn) => {
       const linkMo = btn.linkMo || btn.linkM || btn.link_mobile;
       const linkPc = btn.linkPc || btn.linkP || btn.link_pc;
@@ -530,7 +559,9 @@ export class AlimtalkService {
         receiverPhone: dto.receiverPhone.replace(/-/g, ''),
         content,
         title: title ?? null,
-        subtitle: template.subtitle ?? null,
+        subtitle: subtitle ?? null,
+        tplExtra: tplExtra ?? null,
+        tplAdvert: tplAdvert ?? null,
         buttons: buttons ?? null,
         type: isScheduled ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
         scheduledAt: isScheduled ? scheduledDate : null,
@@ -575,7 +606,9 @@ export class AlimtalkService {
         receiverPhone: dto.receiverPhone.replace(/-/g, ''),
         content,
         title: title ?? null,
-        subtitle: template.subtitle ?? null,
+        subtitle: subtitle ?? null,
+        tplExtra: tplExtra ?? null,
+        tplAdvert: tplAdvert ?? null,
         buttons: buttons ?? null,
         type: isScheduled ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
         scheduledAt:

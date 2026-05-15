@@ -43,6 +43,8 @@ interface Template {
   content: string;
   title: string | null;
   subtitle: string | null;
+  tplExtra: string | null;
+  tplAdvert: string | null;
   buttons: AlimtalkButton[] | null;
   type: string;
   inspStatus: string;
@@ -117,6 +119,8 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
       selectedTemplate.content,
       selectedTemplate.title,
       selectedTemplate.subtitle,
+      selectedTemplate.tplExtra,
+      selectedTemplate.tplAdvert,
       ...buttonTexts,
     ]);
   }, [selectedTemplate]);
@@ -303,6 +307,8 @@ export default function SendAlimtalk({ apiKey }: SendAlimtalkProps) {
             title={replaceVars(selectedTemplate.title)}
             subtitle={replaceVars(selectedTemplate.subtitle)}
             content={replaceVars(selectedTemplate.content)}
+            extra={replaceVars(selectedTemplate.tplExtra)}
+            advert={replaceVars(selectedTemplate.tplAdvert)}
             emtype={selectedTemplate.type === 'EMPHASIS' ? '강조표기형' : '기본형'}
             buttons={(selectedTemplate.buttons ?? []).map((btn) => ({
               ...btn,

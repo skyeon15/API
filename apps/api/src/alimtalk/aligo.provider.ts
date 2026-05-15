@@ -176,15 +176,24 @@ export class AligoProvider {
       ...res,
       list: raw.map((t) => {
         const title = t.templtTitle ?? t.tpl_title ?? null;
+        const subtitle = t.templtSubtitle ?? t.tpl_subtitle ?? null;
+        const tplExtra = t.templtExtra ?? t.tpl_extra ?? null;
+        const tplAdvert = t.templtAd ?? t.templtAdvert ?? t.tpl_advert ?? null;
+        const tplType = t.templateEmType ?? t.tpl_type ?? 'BA';
+        
         const imageUrl = t.templtImageUrl ?? t.templtImageName ?? null;
         const type = imageUrl ? 'IM' : title ? 'EX' : 'BA';
+        
         return {
           code: t.templtCode ?? t.tpl_code,
           name: t.templtName ?? t.tpl_name,
           content: t.templtContent ?? t.tpl_content,
           title,
-          subtitle: t.templtSubtitle ?? t.tpl_subtitle ?? null,
-          type,
+          subtitle,
+          tplExtra,
+          tplAdvert,
+          tplType,
+          type, // This is BA/EX/IM string
           inspStatus: t.inspStatus ?? t.tpl_status ?? null,
           buttons: t.buttons ?? null,
           createdAt: t.cdate ?? null,
@@ -296,6 +305,9 @@ export class AligoProvider {
     name: string;
     content: string;
     type: string;
+    tpl_type?: string;
+    tpl_advert?: string;
+    tpl_extra?: string;
     title?: string;
     subtitle?: string;
     buttons?: Record<string, any>[];
@@ -309,12 +321,26 @@ export class AligoProvider {
       senderkey: params.senderKey,
       tpl_name: params.name,
       tpl_content: params.content,
-      tpl_type: typeMap[params.type] ?? 'BA',
+      tpl_type: params.tpl_type || typeMap[params.type] || 'BA',
     };
     if (params.title) payload.tpl_title = params.title;
     if (params.subtitle) payload.tpl_subtitle = params.subtitle;
-    if (params.buttons?.length)
-      payload.buttons = JSON.stringify(params.buttons);
+    if (params.tpl_advert) payload.tpl_advert = params.tpl_advert;
+    if (params.tpl_extra) payload.tpl_extra = params.tpl_extra;
+    
+    if (params.buttons?.length) {
+      // linkMo -> linkM, linkPc -> linkP 변환 (Aligo API 규격)
+      const transformedButtons = params.buttons.map(btn => {
+        const { linkMo, linkPc, ...rest } = btn;
+        return {
+          ...rest,
+          linkM: linkMo || btn.linkM,
+          linkP: linkPc || btn.linkP,
+        };
+      });
+      payload.buttons = JSON.stringify(transformedButtons);
+    }
+    
     const res = await this.post<any>('/template/add/', payload);
     return {
       ...res,
@@ -327,6 +353,9 @@ export class AligoProvider {
     code: string;
     name: string;
     content: string;
+    tpl_type?: string;
+    tpl_advert?: string;
+    tpl_extra?: string;
     title?: string;
     subtitle?: string;
     buttons?: Record<string, any>[];
@@ -337,10 +366,24 @@ export class AligoProvider {
       tpl_name: params.name,
       tpl_content: params.content,
     };
+    if (params.tpl_type) payload.tpl_type = params.tpl_type;
+    if (params.tpl_advert) payload.tpl_advert = params.tpl_advert;
+    if (params.tpl_extra) payload.tpl_extra = params.tpl_extra;
     if (params.title) payload.tpl_title = params.title;
     if (params.subtitle) payload.tpl_subtitle = params.subtitle;
-    if (params.buttons?.length)
-      payload.buttons = JSON.stringify(params.buttons);
+    
+    if (params.buttons?.length) {
+      const transformedButtons = params.buttons.map(btn => {
+        const { linkMo, linkPc, ...rest } = btn;
+        return {
+          ...rest,
+          linkM: linkMo || btn.linkM,
+          linkP: linkPc || btn.linkP,
+        };
+      });
+      payload.buttons = JSON.stringify(transformedButtons);
+    }
+    
     return this.post('/template/modify/', payload);
   }
 

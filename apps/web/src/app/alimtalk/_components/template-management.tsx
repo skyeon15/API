@@ -43,6 +43,9 @@ interface Template {
   channelId: string;
   channel?: Channel;
   type: TemplateType;
+  tplType: string;
+  tplAdvert: string | null;
+  tplExtra: string | null;
   title: string | null;
   subtitle: string | null;
   content: string;
@@ -53,7 +56,7 @@ interface Template {
 
 interface Button {
   name: string;
-  linkType: 'WL' | 'AL' | 'DS' | 'BK' | 'MD';
+  linkType: 'WL' | 'AL' | 'DS' | 'BK' | 'MD' | 'AC';
   linkMo?: string;
   linkPc?: string;
   linkAnd?: string;
@@ -64,6 +67,9 @@ interface TemplateFormData {
   channelId: string | '';
   name: string;
   type: TemplateType;
+  tplType: string;
+  tplAdvert: string;
+  tplExtra: string;
   content: string;
   title: string;
   subtitle: string;
@@ -95,6 +101,9 @@ const initialForm: TemplateFormData = {
   channelId: '',
   name: '',
   type: '기본형',
+  tplType: 'BA',
+  tplAdvert: '',
+  tplExtra: '',
   content: '',
   title: '',
   subtitle: '',
@@ -188,6 +197,9 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
           name: t.name,
           channelId: selectedChannelId,
           type: t.type === 'IM' ? '이미지형' : t.type === 'EX' ? '강조표기형' : '기본형',
+          tplType: t.tplType || 'BA',
+          tplAdvert: t.tplAdvert || null,
+          tplExtra: t.tplExtra || null,
           title: t.title ?? null,
           subtitle: t.subtitle ?? null,
           content: t.content ?? '',
@@ -208,6 +220,25 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
 
   useEffect(() => { loadChannels(); loadTemplates(); }, [apiKey]);
   useEffect(() => { loadTemplates(); }, [selectedChannelId, showLive]);
+
+  // 메시지 유형 자동 계산 (tpl_extra 또는 채널 추가 버튼 여부에 따라)
+  useEffect(() => {
+    const hasExtra = !!formData.tplExtra?.trim();
+    const hasChannelButton = formData.buttons?.some(b => b.linkType === 'AC');
+
+    let autoType = 'BA';
+    if (hasExtra && hasChannelButton) {
+      autoType = 'MI'; // 복합형
+    } else if (hasExtra) {
+      autoType = 'EX'; // 부가정보형
+    } else if (hasChannelButton) {
+      autoType = 'AD'; // 채널추가형
+    }
+
+    if (formData.tplType !== autoType) {
+      setFormData(prev => ({ ...prev, tplType: autoType }));
+    }
+  }, [formData.tplExtra, formData.buttons]);
 
   const handleSync = async () => {
     if (!selectedChannelId) return;
@@ -250,6 +281,9 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
       channelId: template.channelId,
       name: template.name,
       type: template.type,
+      tplType: template.tplType || 'BA',
+      tplAdvert: template.tplAdvert || '',
+      tplExtra: template.tplExtra || '',
       content: template.content,
       title: template.title || '',
       subtitle: template.subtitle || '',
@@ -266,6 +300,9 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
       channelId: template.channelId,
       name: template.name + ' (복사)',
       type: template.type,
+      tplType: template.tplType || 'BA',
+      tplAdvert: template.tplAdvert || '',
+      tplExtra: template.tplExtra || '',
       content: template.content,
       title: template.title || '',
       subtitle: template.subtitle || '',
@@ -303,6 +340,9 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
           channelId: formData.channelId,
           name: formData.name,
           type: formData.type,
+          tplType: formData.tplType,
+          tplAdvert: formData.tplAdvert || undefined,
+          tplExtra: formData.tplExtra || undefined,
           content: formData.content,
           title: formData.title || undefined,
           subtitle: formData.subtitle || undefined,
@@ -334,6 +374,9 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
         body: JSON.stringify({
           name: formData.name,
           content: formData.content,
+          tplType: formData.tplType,
+          tplAdvert: formData.tplAdvert || undefined,
+          tplExtra: formData.tplExtra || undefined,
           title: formData.title || undefined,
           subtitle: formData.subtitle || undefined,
           buttons: formData.buttons.length > 0 ? formData.buttons : undefined,
@@ -372,8 +415,30 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
     }
   };
 
+  const handleChannelAddToggle = (checked: boolean) => {
+    const newButtons = [...formData.buttons];
+    if (checked) {
+      if (!newButtons.some((b) => b.linkType === 'AC')) {
+        newButtons.unshift({ name: '채널 추가', linkType: 'AC' });
+      }
+      setFormData((prev) => ({
+        ...prev,
+        buttons: newButtons,
+        tplAdvert: '채널 추가하고 이 채널의 광고와 마케팅 메시지를 카카오톡으로 받기',
+      }));
+    } else {
+      const idx = newButtons.findIndex((b) => b.linkType === 'AC');
+      if (idx !== -1) newButtons.splice(idx, 1);
+      setFormData((prev) => ({
+        ...prev,
+        buttons: newButtons,
+        tplAdvert: '',
+      }));
+    }
+  };
+
   const openAddButtonModal = () => {
-    if (formData.buttons.length >= 5) {
+    if (formData.buttons.filter((b) => b.linkType !== 'AC').length >= 5) {
       setResultModal({ show: true, title: '버튼 추가 불가', message: '버튼은 최대 5개까지 추가할 수 있습니다.', isError: true });
       return;
     }
@@ -613,7 +678,72 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
                   <p className="text-xs text-muted-foreground">변수는 #{'{변수명}'} 형식으로 입력하세요.</p>
                 </div>
 
-                {/* 버튼 */}
+                {/* 부가 정보 */}
+                <div className="space-y-2">
+                  <Label>부가 정보</Label>
+                  <textarea
+                    value={formData.tplExtra}
+                    onChange={(e) => setFormData((prev) => ({ ...prev, tplExtra: e.target.value }))}
+                    className="w-full px-3 py-2 border rounded-md text-sm resize-y bg-background focus:outline-none focus:ring-2 focus:ring-ring border-input"
+                    rows={2}
+                    placeholder="예: 이용해주셔서 감사합니다."
+                  />
+                  <p className="text-xs text-muted-foreground">부가 정보 입력 시 '부가정보형(EX)' 또는 '복합형(MI)'으로 자동 전환돼요.</p>
+                </div>
+
+                {/* 채널 추가 버튼 */}
+                <div className="space-y-2">
+                  <Label>채널 추가 버튼</Label>
+                  <button
+                    type="button"
+                    onClick={() => handleChannelAddToggle(!formData.buttons.some((b) => b.linkType === 'AC'))}
+                    className={`w-full p-4 border-2 rounded-lg transition-all text-left ${
+                      formData.buttons.some((b) => b.linkType === 'AC')
+                        ? 'border-primary bg-primary/5'
+                        : 'border-border bg-background hover:border-border/80'
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`mt-0.5 w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                        formData.buttons.some((b) => b.linkType === 'AC')
+                          ? 'border-primary bg-primary'
+                          : 'border-muted-foreground/30'
+                      }`}>
+                        {formData.buttons.some((b) => b.linkType === 'AC') && (
+                          <svg className="w-3 h-3 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                      <div className="flex-1">
+                        <div className={`text-sm font-medium ${
+                          formData.buttons.some((b) => b.linkType === 'AC') ? 'text-primary' : 'text-foreground'
+                        }`}>
+                          채널 추가 버튼 포함
+                        </div>
+                        <p className={`text-xs mt-1 leading-relaxed ${
+                          formData.buttons.some((b) => b.linkType === 'AC') ? 'text-primary/80' : 'text-muted-foreground'
+                        }`}>
+                          '채널 추가' 버튼과 광고/마케팅 수신동의 문구가 자동으로 추가돼요.
+                        </p>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* 광고 문구 */}
+                {formData.tplAdvert && (
+                  <div className="space-y-2">
+                    <Label>광고 문구</Label>
+                    <Input
+                      value={formData.tplAdvert}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, tplAdvert: e.target.value }))}
+                      className="text-xs"
+                    />
+                  </div>
+                )}
+
+                {/* 하단 버튼 */}
                 <div className="space-y-2">
                   <div className="flex justify-between items-center">
                     <Label>하단 버튼</Label>
@@ -621,25 +751,28 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
                       + 버튼 추가
                     </Button>
                   </div>
-                  {formData.buttons.length === 0 ? (
+                  {formData.buttons.filter((b) => b.linkType !== 'AC').length === 0 ? (
                     <p className="text-xs text-muted-foreground text-center py-3 border border-dashed rounded-md">추가된 버튼이 없습니다.</p>
                   ) : (
                     <div className="space-y-2">
-                      {formData.buttons.map((btn, idx) => (
-                        <div key={idx} className="flex items-center justify-between p-3 border rounded-lg">
-                          <div>
-                            <p className="text-sm font-medium">{btn.name}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {LINK_TYPE_OPTIONS.find((o) => o.value === btn.linkType)?.label || btn.linkType}
-                              {btn.linkMo && ` · ${btn.linkMo}`}
-                            </p>
+                      {formData.buttons.map((btn, idx) => {
+                        if (btn.linkType === 'AC') return null;
+                        return (
+                          <div key={idx} className="flex items-center justify-between p-3 border rounded-lg">
+                            <div>
+                              <p className="text-sm font-medium">{btn.name}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {LINK_TYPE_OPTIONS.find((o) => o.value === btn.linkType)?.label || btn.linkType}
+                                {btn.linkMo && ` · ${btn.linkMo}`}
+                              </p>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setButtonModal({ show: true, isEdit: true, index: idx, data: { ...btn } })}>수정</Button>
+                              <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => { const b = [...formData.buttons]; b.splice(idx, 1); setFormData((prev) => ({ ...prev, buttons: b })); }}>삭제</Button>
+                            </div>
                           </div>
-                          <div className="flex gap-1">
-                            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs" onClick={() => setButtonModal({ show: true, isEdit: true, index: idx, data: { ...btn } })}>수정</Button>
-                            <Button type="button" variant="ghost" size="sm" className="h-7 px-2 text-xs text-destructive hover:text-destructive" onClick={() => { const b = [...formData.buttons]; b.splice(idx, 1); setFormData((prev) => ({ ...prev, buttons: b })); }}>삭제</Button>
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -653,6 +786,8 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
                   subtitle={formData.subtitle}
                   title={formData.title}
                   content={formData.content}
+                  extra={formData.tplExtra}
+                  advert={formData.tplAdvert}
                   buttons={formData.buttons}
                   emtype={formData.type}
                 />
@@ -680,6 +815,8 @@ export default function TemplateManagement({ apiKey }: TemplateManagementProps) 
                 subtitle={viewingTemplate.subtitle || ''}
                 title={viewingTemplate.title || ''}
                 content={viewingTemplate.content}
+                extra={viewingTemplate.tplExtra || ''}
+                advert={viewingTemplate.tplAdvert || ''}
                 buttons={parseButtons(viewingTemplate.buttons)}
                 emtype={viewingTemplate.type}
               />

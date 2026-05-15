@@ -239,6 +239,22 @@ export class AlimtalkController {
           enum: ['기본형', '강조표기형', '이미지형'],
           default: '기본형',
         },
+        tplType: {
+          type: 'string',
+          enum: ['BA', 'EX', 'AD', 'MI'],
+          description: '메시지 유형 (BA: 기본형, EX: 부가정보형, AD: 광고추가형, MI: 복합형)',
+          default: 'BA',
+        },
+        tplAdvert: {
+          type: 'string',
+          description: '광고/수신동의 문구',
+          nullable: true,
+        },
+        tplExtra: {
+          type: 'string',
+          description: '부가 정보',
+          nullable: true,
+        },
         content: {
           type: 'string',
           example: '#{이름}님, 예약이 완료되었습니다.',
@@ -262,7 +278,7 @@ export class AlimtalkController {
               name: { type: 'string', example: '자세히 보기' },
               linkType: {
                 type: 'string',
-                enum: ['WL', 'AL', 'DS', 'BK', 'MD'],
+                enum: ['WL', 'AL', 'DS', 'BK', 'MD', 'AC'],
                 example: 'WL',
               },
               linkMo: { type: 'string', example: 'https://bbforest.net' },
@@ -279,6 +295,9 @@ export class AlimtalkController {
       channelId: string;
       name: string;
       type: TemplateType;
+      tplType?: string;
+      tplAdvert?: string;
+      tplExtra?: string;
       content: string;
       title?: string;
       subtitle?: string;
@@ -313,6 +332,9 @@ export class AlimtalkController {
       properties: {
         name: { type: 'string' },
         content: { type: 'string' },
+        tplType: { type: 'string', enum: ['BA', 'EX', 'AD', 'MI'] },
+        tplAdvert: { type: 'string', nullable: true },
+        tplExtra: { type: 'string', nullable: true },
         title: { type: 'string', nullable: true },
         subtitle: { type: 'string', nullable: true },
         buttons: { type: 'array', nullable: true, items: { type: 'object' } },
@@ -325,6 +347,9 @@ export class AlimtalkController {
     body: {
       name?: string;
       content?: string;
+      tplType?: string;
+      tplAdvert?: string;
+      tplExtra?: string;
       title?: string;
       subtitle?: string;
       buttons?: Record<string, any>[];

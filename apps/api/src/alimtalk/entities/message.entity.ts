@@ -51,6 +51,12 @@ export class AlimtalkMessage extends BaseEntity {
   @Column({ type: 'varchar', nullable: true })
   subtitle: string | null;
 
+  @Column({ type: 'text', nullable: true })
+  tplExtra: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  tplAdvert: string | null;
+
   @Column({ type: 'jsonb', nullable: true })
   buttons: Record<string, any>[] | null;
 

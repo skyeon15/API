@@ -17,6 +17,8 @@ interface AlimtalkPreviewProps {
   title?: string;
   subtitle?: string;
   content: string;
+  extra?: string;
+  advert?: string;
   buttons?: Button[];
   emtype?: '기본형' | '강조표기형' | '이미지형';
 }
@@ -26,6 +28,8 @@ export default function AlimtalkPreview({
   title,
   subtitle,
   content,
+  extra,
+  advert,
   buttons = [],
   emtype = '기본형',
 }: AlimtalkPreviewProps) {
@@ -61,19 +65,36 @@ export default function AlimtalkPreview({
           {content && (
             <div className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{content}</div>
           )}
+
+          {extra && (
+            <div className="text-xs text-gray-400 whitespace-pre-wrap leading-relaxed pt-2">
+              {extra}
+            </div>
+          )}
+
+          {advert && (
+            <div className="text-xs text-gray-500 leading-relaxed pt-2 border-t border-gray-50">
+              {advert}
+            </div>
+          )}
         </div>
 
         {buttons && buttons.length > 0 && (
           <div className="border-t border-gray-100 bg-[#f7f7f7]">
             {buttons.map((btn, idx) => {
+              const isChannelAdd = btn.linkType === 'AC';
               const isToggled = toggledButtons.has(idx);
               const link = btn.linkMo || btn.linkPc || btn.linkAnd || btn.linkIos;
 
               return (
                 <div key={idx} className="border-b border-gray-200 last:border-b-0">
                   <div
-                    className="w-full py-3 text-center text-sm text-gray-700 font-medium hover:bg-gray-100 cursor-pointer break-all px-2"
-                    onClick={() => link && toggleButton(idx)}
+                    className={`w-full py-3 text-center text-sm font-medium break-all px-2 ${
+                      isChannelAdd
+                        ? 'text-blue-500'
+                        : 'text-gray-700 hover:bg-gray-100 cursor-pointer'
+                    }`}
+                    onClick={() => !isChannelAdd && link && toggleButton(idx)}
                   >
                     {isToggled && link ? (
                       <span className="text-blue-600 text-xs">{link}</span>
