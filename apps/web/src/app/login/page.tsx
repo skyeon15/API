@@ -218,6 +218,29 @@ function LoginForm() {
               </Button>
             </form>
           )}
+
+          {/* 의면적 동의 고지 */}
+          <p className="text-xs text-center text-muted-foreground leading-relaxed">
+            로그인 시{' '}
+            <a
+              href="/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              이용약관
+            </a>
+            {' 및 '}
+            <a
+              href="/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-foreground"
+            >
+              개인정보처리방침
+            </a>
+            에 동의하는 것으로 간주됩니다.
+          </p>
         </CardContent>
       </Card>
     </div>
