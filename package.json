@@ -10,14 +10,14 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "turbo build",
-    "dev": "turbo dev",
+    "build": "doppler run -- turbo build",
+    "dev": "doppler run -- turbo dev",
     "lint": "turbo lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "start": "turbo run start:prod --filter=api & turbo run start --filter=web",
-    "start:api": "npm run start:prod --workspace=apps/api",
-    "start:web": "npm run start --workspace=apps/web",
-    "migration:run": "npm run migration:run --workspace=apps/api"
+    "start": "doppler run -- sh -c 'turbo run start:prod --filter=api & turbo run start --filter=web'",
+    "start:api": "doppler run -- npm run start:prod --workspace=apps/api",
+    "start:web": "doppler run -- npm run start --workspace=apps/web",
+    "migration:run": "doppler run -- npm run migration:run --workspace=apps/api"
   },
   "devDependencies": {
     "turbo": "^2.0.0",

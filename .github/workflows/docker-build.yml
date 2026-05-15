@@ -38,6 +38,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Doppler에서 web 빌드용 NEXT_PUBLIC_* 시크릿을 가져와 환경변수로 노출.
+      # api 이미지는 런타임 시크릿만 사용하므로 빌드 시점에 fetch 불필요.
+      - name: Fetch NEXT_PUBLIC_* secrets from Doppler
+        if: matrix.app == 'web'
+        uses: dopplerhq/secrets-fetch-action@v1.3.0
+        id: doppler
+        with:
+          doppler-token: ${{ secrets.DOPPLER_TOKEN_PRD }}
+          doppler-project: api-platform
+          doppler-config: prd
+          inject-env-vars: false
+
       - name: Build and push by digest
         id: build
         uses: docker/build-push-action@v6
@@ -45,6 +57,9 @@ jobs:
           context: .
           file: apps/${{ matrix.app }}/Dockerfile
           platforms: ${{ matrix.platform }}
+          build-args: |
+            ${{ matrix.app == 'web' && format('NEXT_PUBLIC_API_URL={0}', steps.doppler.outputs.NEXT_PUBLIC_API_URL) || '' }}
+            ${{ matrix.app == 'web' && format('NEXT_PUBLIC_WEB_URL={0}', steps.doppler.outputs.NEXT_PUBLIC_WEB_URL) || '' }}
           outputs: type=image,name=ghcr.io/${{ env.REPO_LOWER }}/${{ matrix.app }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.app }}-${{ matrix.platform }}

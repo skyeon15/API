@@ -1,11 +1,18 @@
+# 운영 배포: ./scripts/compose-doppler.sh -f docker-compose.prod.yml up -d
+# 호스트에 doppler CLI + DOPPLER_TOKEN(prd config service token) 사전 설정 필요.
+# Doppler 대시보드에서 키 추가/삭제 시 이 파일 무수정으로 자동 반영됨.
 services:
   db:
     image: 'postgres:18-alpine'
     platform: linux/arm64
     volumes:
       - 'pds-db-data:/var/lib/postgresql/data'
-    env_file:
-      - .env.prod
+    # postgres 이미지는 POSTGRES_* 변수를 요구하므로 Doppler의 API_DB_* 에서 매핑.
+    # ${VAR}는 compose --env-file로 주입된 .env.runtime에서 보간됨.
+    environment:
+      - POSTGRES_USER=${API_DB_USER}
+      - POSTGRES_PASSWORD=${API_DB_PASSWORD}
+      - POSTGRES_DB=${API_DB_NAME}
     healthcheck:
       test:
         - CMD-SHELL
@@ -29,14 +36,14 @@ services:
   api:
     image: ghcr.io/skyeon15/api/api
     env_file:
-      - .env.prod
+      - .env.runtime
     depends_on:
       db:
         condition: service_healthy
   web:
     image: ghcr.io/skyeon15/api/web
     env_file:
-      - .env.prod
+      - .env.runtime
     depends_on:
       - api
 

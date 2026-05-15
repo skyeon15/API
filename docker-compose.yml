@@ -36,6 +36,9 @@ services:
       - pds-network
 
   # 3. 내 모노레포 코드 (API + Web)
+  # 실행: ./scripts/compose-doppler.sh up
+  # (스크립트가 Doppler에서 .env.runtime을 생성 후 compose에 주입.
+  #  Doppler 대시보드에서 키 추가/삭제 시 이 파일 무수정으로 자동 반영됨.)
   app:
     image: node:24
     container_name: pds-monorepo-dev
@@ -43,8 +46,10 @@ services:
     volumes:
       - ./:/app
     env_file:
-      - .env
-    command: npm run dev
+      - .env.runtime
+    # package.json의 dev 스크립트는 호스트 실행용으로 doppler run prefix가 붙어 있음.
+    # 컨테이너 내부에서는 doppler CLI가 없고 env가 이미 주입되었으므로 turbo를 직접 호출.
+    command: ["npx", "turbo", "dev"]
     ports:
       - "10150:10150" # Web
       - "10151:10151" # API

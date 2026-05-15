@@ -6,6 +6,14 @@ COPY apps/api/package.json ./apps/api/
 COPY apps/web/package*.json ./apps/web/
 RUN npm ci
 COPY . .
+
+# Next.js NEXT_PUBLIC_* 변수는 빌드 시점에 클라이언트 번들로 인라인되므로
+# CI(GitHub Actions)에서 Doppler로부터 가져와 --build-arg로 전달해야 한다.
+ARG NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_WEB_URL
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WEB_URL=${NEXT_PUBLIC_WEB_URL}
+
 RUN npm run build --workspace=web
 
 # Production stage
