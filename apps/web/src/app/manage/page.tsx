@@ -23,6 +23,9 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 
+import { StripeCardDialog } from './_components/stripe-card-dialog';
+import { StripePaymentDialog } from './_components/stripe-payment-dialog';
+
 import { CONFIG } from '@/lib/constants';
 const API_BASE = CONFIG.API_BASE;
 
@@ -38,6 +41,8 @@ interface Payment {
   id: number;
   cardName: string;
   cardNo: string;
+  sellerId?: string | null;
+  provider?: 'payapp' | 'stripe';
 }
 
 interface Seller {
@@ -48,9 +53,62 @@ interface Seller {
   memo: string;
 }
 
+interface Transaction {
+  id: string;
+  paymentMethodId: string | null;
+  sellerId: string | null;
+  provider?: 'payapp' | 'stripe';
+  orderId: string;
+  mulNo: string | null;
+  goodName: string;
+  amount: number;
+  currency?: string;
+  cancelledAmount: number;
+  buyerName: string | null;
+  buyerPhone: string | null;
+  payMethod: string;
+  status: 'pending' | 'paid' | 'partial_cancelled' | 'cancelled' | 'failed';
+  paidAt: string | null;
+  cancelledAt: string | null;
+  memo: string | null;
+  createdAt: string;
+}
+
+interface CashReceiptItem {
+  id: string;
+  transactionId: string | null;
+  sellerId: string;
+  type: '소득공제' | '지출증빙';
+  buyerName: string;
+  idInfo: string;
+  goodName: string;
+  amount: number;
+  supplyAmount: number;
+  taxAmount: number;
+  cashstno: string | null;
+  cashsturl: string | null;
+  status: 'request' | 'issued' | 'cancelled' | 'failed';
+  issuedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+}
+
 interface Service {
   value: string;
   label: string;
+}
+
+// 통화 인식 금액 포맷. DB는 Stripe 최소 화폐단위 저장(USD=센트, KRW=원).
+const ZERO_DECIMAL_CURRENCIES = ['KRW', 'JPY', 'VND', 'CLP'];
+function formatMoney(amount: number, currency?: string): string {
+  const cur = (currency || 'krw').toUpperCase();
+  const isZeroDecimal = ZERO_DECIMAL_CURRENCIES.includes(cur);
+  const value = isZeroDecimal ? amount : amount / 100;
+  try {
+    return new Intl.NumberFormat('ko-KR', { style: 'currency', currency: cur }).format(value);
+  } catch {
+    return `${value.toLocaleString()} ${cur}`;
+  }
 }
 
 export default function ManagePage() {
@@ -59,6 +117,38 @@ export default function ManagePage() {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [sellers, setSellers] = useState<Seller[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [cashReceipts, setCashReceipts] = useState<CashReceiptItem[]>([]);
+
+  const [chargeOpen, setChargeOpen] = useState(false);
+  const [chargeForm, setChargeForm] = useState({
+    paymentMethodId: '',
+    sellerId: '',
+    goodName: '',
+    amount: '',
+    memo: '',
+  });
+  const [isCharging, setIsCharging] = useState(false);
+  const [chargeError, setChargeError] = useState('');
+
+  const [cancelTxOpen, setCancelTxOpen] = useState(false);
+  const [cancelTxTarget, setCancelTxTarget] = useState<Transaction | null>(null);
+  const [cancelTxForm, setCancelTxForm] = useState({ amount: '', memo: '' });
+  const [isCancellingTx, setIsCancellingTx] = useState(false);
+  const [cancelTxError, setCancelTxError] = useState('');
+
+  const [issueReceiptOpen, setIssueReceiptOpen] = useState(false);
+  const [receiptForm, setReceiptForm] = useState({
+    sellerId: '',
+    transactionId: '',
+    type: '소득공제' as '소득공제' | '지출증빙',
+    buyerName: '',
+    idInfo: '',
+    goodName: '',
+    amount: '',
+  });
+  const [isIssuingReceipt, setIsIssuingReceipt] = useState(false);
+  const [receiptError, setReceiptError] = useState('');
   const [serviceRegistry, setServiceRegistry] = useState<Service[]>([]);
   const [newKeyName, setNewKeyName] = useState('');
   const [editingKeyId, setEditingKeyId] = useState<number | null>(null);
@@ -69,6 +159,7 @@ export default function ManagePage() {
 
   // 결제 수단 추가 관련 상태
   const [newCard, setNewCard] = useState({
+    sellerId: '',
     cardNo: '',
     expMonth: '',
     expYear: '',
@@ -152,16 +243,148 @@ export default function ManagePage() {
 
   const fetchData = async () => {
     try {
-      const [keysRes, payRes, sellRes] = await Promise.all([
+      const [keysRes, payRes, sellRes, txRes, receiptRes] = await Promise.all([
         fetch(`${API_BASE}/profile/api-keys`, { credentials: 'include' }),
         fetch(`${API_BASE}/profile/payments`, { credentials: 'include' }),
         fetch(`${API_BASE}/profile/sellers`, { credentials: 'include' }),
+        fetch(`${API_BASE}/profile/payments/transactions`, { credentials: 'include' }),
+        fetch(`${API_BASE}/profile/cash-receipts`, { credentials: 'include' }),
       ]);
       setApiKeys(await keysRes.json());
       setPayments(await payRes.json());
       setSellers(await sellRes.json());
+      setTransactions(await txRes.json());
+      setCashReceipts(await receiptRes.json());
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleChargeCard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setChargeError('');
+    const amount = parseInt(chargeForm.amount, 10);
+    if (!chargeForm.paymentMethodId || !chargeForm.sellerId || !chargeForm.goodName || !amount || amount <= 0) {
+      setChargeError('필수 항목을 확인해주세요.');
+      return;
+    }
+    setIsCharging(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/profile/payments/charge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          paymentMethodId: chargeForm.paymentMethodId,
+          sellerId: chargeForm.sellerId,
+          goodName: chargeForm.goodName,
+          amount,
+          memo: chargeForm.memo || undefined,
+        }),
+        credentials: 'include',
+      });
+      const tx = await res.json();
+      setTransactions((prev) => [tx, ...prev]);
+      setChargeOpen(false);
+      setChargeForm({ paymentMethodId: '', sellerId: '', goodName: '', amount: '', memo: '' });
+    } catch (err: any) {
+      setChargeError(err?.message || '결제 실패');
+    } finally {
+      setIsCharging(false);
+    }
+  };
+
+  const openCancelTx = (tx: Transaction) => {
+    setCancelTxTarget(tx);
+    setCancelTxForm({ amount: '', memo: '' });
+    setCancelTxError('');
+    setCancelTxOpen(true);
+  };
+
+  const handleCancelTransaction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cancelTxTarget) return;
+    setCancelTxError('');
+    const amount = cancelTxForm.amount ? parseInt(cancelTxForm.amount, 10) : undefined;
+    setIsCancellingTx(true);
+    try {
+      // Stripe 결제는 환불 엔드포인트, PayApp은 취소 엔드포인트로 분기
+      const isStripe = cancelTxTarget.provider === 'stripe';
+      const url = isStripe
+        ? `${API_BASE}/profile/stripe/transactions/${cancelTxTarget.id}/refund`
+        : `${API_BASE}/profile/payments/transactions/${cancelTxTarget.id}/cancel`;
+      const payload = isStripe
+        ? { amount, reason: cancelTxForm.memo || undefined }
+        : { amount, memo: cancelTxForm.memo || undefined };
+      const res = await apiFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        credentials: 'include',
+      });
+      const tx = await res.json();
+      setTransactions((prev) => prev.map((t) => (t.id === tx.id ? tx : t)));
+      setCancelTxOpen(false);
+    } catch (err: any) {
+      setCancelTxError(err?.message || '취소 실패');
+    } finally {
+      setIsCancellingTx(false);
+    }
+  };
+
+  const handleIssueReceipt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setReceiptError('');
+    const amount = parseInt(receiptForm.amount, 10);
+    if (!receiptForm.sellerId || !receiptForm.buyerName || !receiptForm.idInfo || !receiptForm.goodName || !amount) {
+      setReceiptError('필수 항목을 확인해주세요.');
+      return;
+    }
+    setIsIssuingReceipt(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/profile/cash-receipts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sellerId: receiptForm.sellerId,
+          transactionId: receiptForm.transactionId || undefined,
+          type: receiptForm.type,
+          buyerName: receiptForm.buyerName,
+          idInfo: receiptForm.idInfo,
+          goodName: receiptForm.goodName,
+          amount,
+        }),
+        credentials: 'include',
+      });
+      const receipt = await res.json();
+      setCashReceipts((prev) => [receipt, ...prev]);
+      setIssueReceiptOpen(false);
+      setReceiptForm({
+        sellerId: '',
+        transactionId: '',
+        type: '소득공제',
+        buyerName: '',
+        idInfo: '',
+        goodName: '',
+        amount: '',
+      });
+    } catch (err: any) {
+      setReceiptError(err?.message || '발급 실패');
+    } finally {
+      setIsIssuingReceipt(false);
+    }
+  };
+
+  const handleCancelReceipt = async (id: string) => {
+    if (!confirm('이 현금영수증을 취소할까요?')) return;
+    try {
+      const res = await apiFetch(`${API_BASE}/profile/cash-receipts/${id}/cancel`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const receipt = await res.json();
+      setCashReceipts((prev) => prev.map((r) => (r.id === receipt.id ? receipt : r)));
+    } catch (err: any) {
+      alert(err?.message || '취소 실패');
     }
   };
 
@@ -254,6 +477,10 @@ export default function ManagePage() {
     e.preventDefault();
     setPaymentError('');
     setPaymentSuccess('');
+    if (!newCard.sellerId) {
+      setPaymentError('판매자 계정을 선택해주세요.');
+      return;
+    }
     const cleanCardNo = newCard.cardNo.replace(/\D/g, '');
     if (cleanCardNo.length < 15) {
       setPaymentError('카드 번호가 올바르지 않습니다.');
@@ -265,6 +492,7 @@ export default function ManagePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          sellerId: newCard.sellerId,
           cardNo: cleanCardNo,
           expMonth: newCard.expMonth,
           expYear: newCard.expYear,
@@ -276,7 +504,7 @@ export default function ManagePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || '등록 실패');
       setPaymentSuccess('카드가 성공적으로 등록되었습니다.');
-      setNewCard({ cardNo: '', expMonth: '', expYear: '', cardPw: '', buyerAuthNo: '' });
+      setNewCard({ sellerId: '', cardNo: '', expMonth: '', expYear: '', cardPw: '', buyerAuthNo: '' });
       setTimeout(() => {
         setAddPaymentOpen(false);
         setPaymentSuccess('');
@@ -399,7 +627,7 @@ export default function ManagePage() {
         <div>
           <h1 className="text-2xl font-bold">관리 콘솔</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            API 키 및 결제 수단, 판매자 계정을 관리합니다.
+            API 키, 결제 수단, 판매자 계정, 결제 내역, 현금영수증을 관리합니다.
           </p>
         </div>
 
@@ -886,7 +1114,7 @@ export default function ManagePage() {
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-7 bg-muted rounded flex items-center justify-center text-[9px] font-bold text-muted-foreground">
-                    CARD
+                    {pm.provider === 'stripe' ? 'STRIPE' : 'CARD'}
                   </div>
                   <div>
                     {editingPaymentId === pm.id ? (
@@ -928,7 +1156,14 @@ export default function ManagePage() {
                         {pm.cardName}
                       </button>
                     )}
-                    <p className="text-xs text-muted-foreground">{pm.cardNo}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {pm.cardNo}
+                      {pm.provider !== 'stripe' && pm.sellerId && (
+                        <span className="ml-2">
+                          · 판매자 {sellers.find((s) => String(s.id) === String(pm.sellerId))?.sellerId ?? '-'}
+                        </span>
+                      )}
+                    </p>
                   </div>
                 </div>
                 <Dialog>
@@ -990,6 +1225,31 @@ export default function ManagePage() {
                   )}
 
                   <form onSubmit={handleAddPayment} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="cardSeller">판매자 계정</Label>
+                      <select
+                        id="cardSeller"
+                        className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                        value={newCard.sellerId}
+                        onChange={(e) => setNewCard({ ...newCard, sellerId: e.target.value })}
+                        required
+                      >
+                        <option value="">선택</option>
+                        {sellers.map((s) => (
+                          <option key={s.id} value={String(s.id)}>
+                            {s.sellerId}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground">
+                        빌링키는 선택한 판매자 계정으로 발급됩니다. 다른 판매자로 결제하려면 해당 판매자로 카드를 다시 등록하세요.
+                      </p>
+                      {sellers.length === 0 && (
+                        <p className="text-xs text-destructive">
+                          먼저 판매자 계정을 등록해주세요.
+                        </p>
+                      )}
+                    </div>
                     <div className="space-y-2">
                       <Label htmlFor="cardNo">카드 번호 (15~16자리)</Label>
                       <Input
@@ -1071,8 +1331,420 @@ export default function ManagePage() {
                       </div>
                     </div>
                     <DialogFooter>
-                      <Button type="submit" disabled={isAddingPayment}>
+                      <Button type="submit" disabled={isAddingPayment || sellers.length === 0}>
                         {isAddingPayment ? '등록 중...' : '카드 등록'}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+            </div>
+
+            <div className="pt-1">
+              <StripeCardDialog onSaved={fetchData} />
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* 결제 내역 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>결제 내역</CardTitle>
+            <CardDescription>
+              등록된 카드로 결제하거나 결제(부분/전체)를 취소합니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {transactions.map((t) => {
+              const statusLabel: Record<Transaction['status'], string> = {
+                pending: '대기',
+                paid: '결제완료',
+                partial_cancelled: '부분취소',
+                cancelled: '취소',
+                failed: '실패',
+              };
+              const remaining = t.amount - t.cancelledAmount;
+              const canCancel = t.status === 'paid' || t.status === 'partial_cancelled';
+              return (
+                <div key={t.id} className="p-3 border rounded-lg space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{t.goodName}</p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">
+                        {t.orderId} {t.mulNo ? `· mul_no ${t.mulNo}` : ''}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {t.provider === 'stripe' && (
+                        <Badge variant="outline">Stripe</Badge>
+                      )}
+                      <Badge variant={t.status === 'paid' ? 'default' : 'secondary'}>
+                        {statusLabel[t.status]}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {formatMoney(t.amount, t.currency)}
+                      {t.cancelledAmount > 0 &&
+                        ` (취소 ${formatMoney(t.cancelledAmount, t.currency)})`}
+                    </span>
+                    <span>{new Date(t.createdAt).toLocaleString('ko-KR')}</span>
+                  </div>
+                  {canCancel && remaining > 0 && (
+                    <div className="pt-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                        onClick={() => openCancelTx(t)}
+                      >
+                        결제 취소
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {transactions.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                결제 내역이 없습니다.
+              </p>
+            )}
+
+            <div className="pt-2">
+              <Dialog open={chargeOpen} onOpenChange={setChargeOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={payments.length === 0 || sellers.length === 0}
+                  >
+                    {payments.length === 0 || sellers.length === 0
+                      ? '카드와 판매자 계정을 먼저 등록하세요'
+                      : '등록된 카드로 결제'}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>결제 요청</DialogTitle>
+                    <DialogDescription>
+                      등록된 카드(빌링키)로 즉시 결제합니다.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {chargeError && (
+                    <Alert variant="destructive" className="my-2">
+                      <AlertDescription>{chargeError}</AlertDescription>
+                    </Alert>
+                  )}
+                  <form onSubmit={handleChargeCard} className="space-y-4 py-2">
+                    <div className="space-y-2">
+                      <Label>결제 카드</Label>
+                      <select
+                        className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                        value={chargeForm.paymentMethodId}
+                        onChange={(e) => {
+                          const pm = payments.find((p) => String(p.id) === e.target.value);
+                          setChargeForm({
+                            ...chargeForm,
+                            paymentMethodId: e.target.value,
+                            sellerId: pm?.sellerId ? String(pm.sellerId) : '',
+                          });
+                        }}
+                      >
+                        <option value="">선택</option>
+                        {payments
+                          .filter((p) => p.provider !== 'stripe')
+                          .map((p) => (
+                            <option key={p.id} value={String(p.id)}>
+                              {p.cardName} {p.cardNo}
+                            </option>
+                          ))}
+                      </select>
+                      {chargeForm.sellerId && (
+                        <p className="text-xs text-muted-foreground">
+                          판매자: {sellers.find((s) => String(s.id) === String(chargeForm.sellerId))?.sellerId ?? '-'} 계정으로 결제됩니다.
+                        </p>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      <Label>상품명</Label>
+                      <Input
+                        value={chargeForm.goodName}
+                        onChange={(e) => setChargeForm({ ...chargeForm, goodName: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>결제 금액</Label>
+                      <Input
+                        inputMode="numeric"
+                        value={chargeForm.amount}
+                        onChange={(e) =>
+                          setChargeForm({ ...chargeForm, amount: e.target.value.replace(/\D/g, '') })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>메모 (선택)</Label>
+                      <Input
+                        value={chargeForm.memo}
+                        onChange={(e) => setChargeForm({ ...chargeForm, memo: e.target.value })}
+                      />
+                    </div>
+                    <DialogFooter>
+                      <Button type="submit" disabled={isCharging}>
+                        {isCharging ? '결제 중...' : '결제 요청'}
+                      </Button>
+                    </DialogFooter>
+                  </form>
+                </DialogContent>
+              </Dialog>
+              <div className="pt-1">
+                <StripePaymentDialog onPaid={fetchData} />
+              </div>
+            </div>
+
+            <Dialog open={cancelTxOpen} onOpenChange={setCancelTxOpen}>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>결제 취소</DialogTitle>
+                  <DialogDescription>
+                    {cancelTxTarget && (
+                      <>
+                        {cancelTxTarget.goodName} · 결제{' '}
+                        {formatMoney(cancelTxTarget.amount, cancelTxTarget.currency)} · 잔여{' '}
+                        {formatMoney(
+                          cancelTxTarget.amount - cancelTxTarget.cancelledAmount,
+                          cancelTxTarget.currency,
+                        )}
+                      </>
+                    )}
+                  </DialogDescription>
+                </DialogHeader>
+                {cancelTxError && (
+                  <Alert variant="destructive" className="my-2">
+                    <AlertDescription>{cancelTxError}</AlertDescription>
+                  </Alert>
+                )}
+                <form onSubmit={handleCancelTransaction} className="space-y-4 py-2">
+                  <div className="space-y-2">
+                    <Label>취소 금액 (비우면 전체 취소)</Label>
+                    <Input
+                      inputMode="numeric"
+                      value={cancelTxForm.amount}
+                      onChange={(e) =>
+                        setCancelTxForm({ ...cancelTxForm, amount: e.target.value.replace(/\D/g, '') })
+                      }
+                      placeholder="예: 5000"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>취소 사유</Label>
+                    <Input
+                      value={cancelTxForm.memo}
+                      onChange={(e) => setCancelTxForm({ ...cancelTxForm, memo: e.target.value })}
+                      placeholder="사용자 요청 취소"
+                    />
+                  </div>
+                  <DialogFooter>
+                    <Button type="submit" variant="destructive" disabled={isCancellingTx}>
+                      {isCancellingTx ? '취소 중...' : '취소 실행'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </DialogContent>
+            </Dialog>
+          </CardContent>
+        </Card>
+
+        {/* 현금영수증 */}
+        <Card>
+          <CardHeader>
+            <CardTitle>현금영수증</CardTitle>
+            <CardDescription>
+              현금영수증을 발급하거나 취소합니다.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {cashReceipts.map((r) => {
+              const statusLabel: Record<CashReceiptItem['status'], string> = {
+                request: '요청',
+                issued: '발급완료',
+                cancelled: '취소',
+                failed: '실패',
+              };
+              return (
+                <div key={r.id} className="p-3 border rounded-lg space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {r.goodName} ({r.type})
+                      </p>
+                      <p className="text-xs text-muted-foreground font-mono truncate">
+                        {r.buyerName} · {r.idInfo}
+                        {r.cashstno ? ` · No.${r.cashstno}` : ''}
+                      </p>
+                    </div>
+                    <Badge variant={r.status === 'issued' ? 'default' : 'secondary'}>
+                      {statusLabel[r.status]}
+                    </Badge>
+                  </div>
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>
+                      {r.amount.toLocaleString()}원 (공급 {r.supplyAmount.toLocaleString()} · 세 {r.taxAmount.toLocaleString()})
+                    </span>
+                    <span>{new Date(r.createdAt).toLocaleString('ko-KR')}</span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-1">
+                    {r.cashsturl && (
+                      <a
+                        href={r.cashsturl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary hover:underline"
+                      >
+                        영수증 보기
+                      </a>
+                    )}
+                    {r.status === 'issued' && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-xs text-muted-foreground hover:text-destructive ml-auto"
+                        onClick={() => handleCancelReceipt(r.id)}
+                      >
+                        현금영수증 취소
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+
+            {cashReceipts.length === 0 && (
+              <p className="text-sm text-muted-foreground text-center py-4">
+                발급된 현금영수증이 없습니다.
+              </p>
+            )}
+
+            <div className="pt-2">
+              <Dialog open={issueReceiptOpen} onOpenChange={setIssueReceiptOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full"
+                    disabled={sellers.length === 0}
+                  >
+                    {sellers.length === 0 ? '판매자 계정을 먼저 등록하세요' : '현금영수증 발급'}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>현금영수증 발급</DialogTitle>
+                    <DialogDescription>
+                      페이앱 가맹점으로 현금영수증을 발급합니다.
+                    </DialogDescription>
+                  </DialogHeader>
+                  {receiptError && (
+                    <Alert variant="destructive" className="my-2">
+                      <AlertDescription>{receiptError}</AlertDescription>
+                    </Alert>
+                  )}
+                  <form onSubmit={handleIssueReceipt} className="space-y-4 py-2">
+                    <div className="space-y-2">
+                      <Label>판매자</Label>
+                      <select
+                        className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                        value={receiptForm.sellerId}
+                        onChange={(e) => setReceiptForm({ ...receiptForm, sellerId: e.target.value })}
+                      >
+                        <option value="">선택</option>
+                        {sellers.map((s) => (
+                          <option key={s.id} value={String(s.id)}>
+                            {s.sellerId}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>발급 용도</Label>
+                      <select
+                        className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                        value={receiptForm.type}
+                        onChange={(e) =>
+                          setReceiptForm({
+                            ...receiptForm,
+                            type: e.target.value as '소득공제' | '지출증빙',
+                          })
+                        }
+                      >
+                        <option value="소득공제">소득공제 (개인 휴대폰)</option>
+                        <option value="지출증빙">지출증빙 (사업자번호)</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>
+                        {receiptForm.type === '소득공제' ? '구매자명' : '상호명'}
+                      </Label>
+                      <Input
+                        value={receiptForm.buyerName}
+                        onChange={(e) => setReceiptForm({ ...receiptForm, buyerName: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>
+                        {receiptForm.type === '소득공제' ? '휴대폰번호 (숫자 11자리)' : '사업자등록번호 (숫자 10자리)'}
+                      </Label>
+                      <Input
+                        inputMode="numeric"
+                        value={receiptForm.idInfo}
+                        onChange={(e) =>
+                          setReceiptForm({ ...receiptForm, idInfo: e.target.value.replace(/\D/g, '') })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>상품명</Label>
+                      <Input
+                        value={receiptForm.goodName}
+                        onChange={(e) => setReceiptForm({ ...receiptForm, goodName: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>금액</Label>
+                      <Input
+                        inputMode="numeric"
+                        value={receiptForm.amount}
+                        onChange={(e) =>
+                          setReceiptForm({ ...receiptForm, amount: e.target.value.replace(/\D/g, '') })
+                        }
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>연결할 결제 (선택)</Label>
+                      <select
+                        className="w-full h-9 rounded-md border bg-background px-3 text-sm"
+                        value={receiptForm.transactionId}
+                        onChange={(e) =>
+                          setReceiptForm({ ...receiptForm, transactionId: e.target.value })
+                        }
+                      >
+                        <option value="">없음</option>
+                        {transactions
+                          .filter((t) => t.status === 'paid' || t.status === 'partial_cancelled')
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.goodName} · {t.amount.toLocaleString()}원
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <DialogFooter>
+                      <Button type="submit" disabled={isIssuingReceipt}>
+                        {isIssuingReceipt ? '발급 중...' : '발급 요청'}
                       </Button>
                     </DialogFooter>
                   </form>

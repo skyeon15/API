@@ -35,6 +35,8 @@ const OPTIONAL_ENV_VARS = [
   'API_ALIGO_FAILOVER',
   'API_PAYAPP_USERID',
   'API_PAYAPP_LINKKEY',
+  'API_STRIPE_SECRET_KEY',
+  'API_STRIPE_WEBHOOK_SECRET',
   'API_KAKAO_CLIENT_ID',
   'API_NAVER_CLIENT_ID',
   'API_GOOGLE_CLIENT_ID',
@@ -69,7 +71,11 @@ async function bootstrap() {
   // Axios 전역 로거 설정
   setupAxiosLogger();
 
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // rawBody: Stripe 웹훅 서명검증에 원본 바디가 필요 (req.rawBody)
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
 
   // Pino 로거 사용
   app.useLogger(app.get(Logger));
@@ -96,11 +102,6 @@ async function bootstrap() {
       '파란대나무숲에서 제공하는 다양한 API 서비스의 기술 문서예요!',
     )
     .setVersion('1.0')
-    .addServer(
-      `http://a1-2:${process.env.API_PORT || 10151}`,
-      '로컬 개발 서버',
-    )
-    .addServer('https://gaon.bbforest.net', '운영 서버')
     .addBearerAuth(
       { type: 'http', scheme: 'bearer', description: 'API 키를 입력하세요.' },
       'api-key',
@@ -109,14 +110,35 @@ async function bootstrap() {
   const config = builder.build();
   const document = SwaggerModule.createDocument(app, config);
 
-  // Swagger JSON 엔드포인트 제공 (프론트엔드에서 가져다 쓸 용도)
+  // 요청 오리진에 따라 servers를 동적으로 결정한다.
+  //  - bbforest.net 도메인: https://<host>/api  (프록시가 /api prefix를 그대로 전달)
+  //  - 그 외(로컬 등): <proto>://<host>  (prefix 없음)
+  const pickHeader = (v?: string | string[]): string =>
+    (Array.isArray(v) ? v[0] : v) || '';
+  const resolveServers = (req: any) => {
+    const host =
+      pickHeader(req.headers['x-forwarded-host']) || req.headers.host || '';
+    const proto =
+      pickHeader(req.headers['x-forwarded-proto']) ||
+      (req.secure ? 'https' : 'http');
+    const hostname = host.split(':')[0];
+    const url = hostname.endsWith('bbforest.net')
+      ? `${proto}://${host}/api`
+      : `${proto}://${host}`;
+    return [{ url, description: '현재 오리진' }];
+  };
+
+  // Swagger JSON 엔드포인트 — 오리진별 servers 반영 (프론트엔드 codegen 용도 겸용)
   app.use('/docs/openapi.json', (req, res) => {
-    res.json(document);
+    res.json({ ...document, servers: resolveServers(req) });
   });
 
-  // Swagger UI 설정
+  // Swagger UI 설정 — 위 동적 스펙을 가져와 렌더하므로 server도 오리진에 맞춰 표시됨
   SwaggerModule.setup('docs', app, document, {
     swaggerOptions: {
+      // 페이지가 trailing slash 없이 '/docs'로 제공되므로, nest 에셋과 동일한
+      // './docs/...' 상대경로를 써야 '/docs/openapi.json'(운영: '/api/docs/openapi.json')로 해석됨
+      url: './docs/openapi.json',
       persistAuthorization: true,
     },
     customSiteTitle: '파란대나무숲 API 문서',

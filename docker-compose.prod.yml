@@ -33,19 +33,24 @@ services:
       interval: 5s
       timeout: 20s
       retries: 10
-  api:
-    image: ghcr.io/skyeon15/api/api
+  # 단일 이미지: 한 컨테이너에서 NestJS API(10151) + Next.js web(10150) 동시 구동.
+  # 외부 트래픽은 web(10150)으로 들어오고, web이 /api/* 를 컨테이너 내부 API로 프록시한다.
+  app:
+    image: ghcr.io/skyeon15/api
     env_file:
       - .env.runtime
+    ports:
+      - '10150:10150' # Web (외부 진입점)
+    # web(10150) → /api/health 프록시 → API /health 로 web·프록시·API readiness 동시 검증.
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:10150/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
     depends_on:
       db:
         condition: service_healthy
-  web:
-    image: ghcr.io/skyeon15/api/web
-    env_file:
-      - .env.runtime
-    depends_on:
-      - api
 
 volumes:
   pds-db-data:

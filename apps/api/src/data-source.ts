@@ -4,6 +4,8 @@ import { ApiKey } from './admin/entities/api-key.entity.js';
 import { User } from './users/entities/user.entity.js';
 import { PaymentMethod } from './users/entities/payment-method.entity.js';
 import { PayappSeller } from './users/entities/payapp-seller.entity.js';
+import { PaymentTransaction } from './users/entities/payment-transaction.entity.js';
+import { CashReceipt } from './users/entities/cash-receipt.entity.js';
 import { VerificationCode } from './users/entities/verification-code.entity.js';
 import { RefreshToken } from './auth/entities/refresh-token.entity.js';
 import { UserSocialAccount } from './auth/entities/user-social-account.entity.js';
@@ -29,6 +31,8 @@ export const AppDataSource = new DataSource({
     User,
     PaymentMethod,
     PayappSeller,
+    PaymentTransaction,
+    CashReceipt,
     VerificationCode,
     RefreshToken,
     UserSocialAccount,

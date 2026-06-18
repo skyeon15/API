@@ -57,7 +57,7 @@ export DOPPLER_TOKEN=dp.st.prd.xxxxxxxxxxxxxxxxxxxx   # prd config의 service to
 
 ### CI/CD (GitHub Actions)
 
-`docker-build.yml` 이 빌드 시 Doppler `prd` config에서 `NEXT_PUBLIC_*` 시크릿을 가져와 web 이미지에 build-arg로 주입합니다. GitHub repo Settings → Secrets and variables → Actions 에 다음을 등록해야 합니다:
+`docker-build.yml` 이 빌드 시 Doppler `prd` config에서 `NEXT_PUBLIC_*` 시크릿을 가져와 단일 이미지(`ghcr.io/skyeon15/api`, API+web 통합)에 build-arg로 주입합니다. GitHub repo Settings → Secrets and variables → Actions 에 다음을 등록해야 합니다:
 
 - `DOPPLER_TOKEN_PRD` — Doppler `api-platform/prd` config의 read-only service token
 
@@ -67,7 +67,8 @@ export DOPPLER_TOKEN=dp.st.prd.xxxxxxxxxxxxxxxxxxxx   # prd config의 service to
 2. `apps/api/.env.example` 또는 `apps/web/.env.example` 에 키 이름만 문서화 (값은 placeholder)
 3. **런타임 시크릿**은 추가 작업 없음. `compose-doppler.sh` 가 다음 실행 시 자동으로 `.env.runtime` 에 포함시켜 컨테이너로 주입.
 4. **빌드 타임 `NEXT_PUBLIC_*`** 만 별도 처리 필요 — Next.js가 빌드 시점에 클라이언트 번들로 인라인하므로:
-   - `apps/web/Dockerfile` 의 `ARG`/`ENV` 에 키 추가
+   - 루트 `Dockerfile` 의 `ARG`/`ENV` 에 키 추가
    - `.github/workflows/docker-build.yml` 의 build-args에 키 추가
+   - (로컬 `build.sh` 는 Doppler의 `NEXT_PUBLIC_*` 를 자동으로 모두 build-arg로 전달)
 5. 컨테이너 시작 시 새 변수가 필요한 경우 컨테이너 재시작만으로 반영 (`./scripts/compose-doppler.sh up -d --force-recreate`).
 6. **컨테이너 환경변수 이름 매핑**이 필요한 경우 (예: `API_DB_USER` → `POSTGRES_USER`) `docker-compose.prod.yml` 의 `environment:` 블록에 `${VAR}` 형태로 추가.

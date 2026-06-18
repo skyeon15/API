@@ -9,6 +9,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity.js';
+import { PayappSeller } from './payapp-seller.entity.js';
 
 @Entity('payment_methods')
 export class PaymentMethod extends BaseEntity {
@@ -22,17 +23,30 @@ export class PaymentMethod extends BaseEntity {
   @JoinColumn({ name: 'userId' })
   user: User;
 
-  @Column()
-  cardNo: string; // e.g., 4518********1111
+  @Column({ type: 'varchar', default: 'payapp' })
+  provider: string; // 'payapp' | 'stripe'
 
   @Column()
-  cardName: string; // e.g., [신한]
+  cardNo: string; // PayApp: 4518********1111 / Stripe: last4
 
   @Column()
-  merchantId: string; // PG사 판매자 회원 아이디
+  cardName: string; // PayApp: [신한] / Stripe: 카드 브랜드(visa 등)
+
+  @Column({ type: 'uuid', nullable: true })
+  sellerId: string | null; // PayApp: 빌링키가 귀속된 판매자(payapp_sellers.id). Stripe 미사용
+
+  @ManyToOne(() => PayappSeller, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'sellerId' })
+  seller: PayappSeller | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  merchantId: string | null; // PayApp: PG사 판매자 회원 아이디 (Stripe 미사용)
+
+  @Column({ type: 'varchar', nullable: true })
+  customerId: string | null; // Stripe Customer id (cus_xxx)
 
   @Column()
-  billingKey: string; // e.g., encBill
+  billingKey: string; // PayApp: encBill / Stripe: PaymentMethod id (pm_xxx)
 
   @Column({ default: true })
   isActive: boolean;

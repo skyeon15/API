@@ -13,7 +13,6 @@ jobs:
       packages: write
     strategy:
       matrix:
-        app: [api, web]
         platform: [linux/amd64, linux/arm64]
         include:
           - platform: linux/amd64
@@ -38,10 +37,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Doppler에서 web 빌드용 NEXT_PUBLIC_* 시크릿을 가져와 환경변수로 노출.
-      # api 이미지는 런타임 시크릿만 사용하므로 빌드 시점에 fetch 불필요.
+      # 단일 이미지에 web이 포함되므로 NEXT_PUBLIC_* 시크릿을 빌드 시점에 주입한다.
       - name: Fetch NEXT_PUBLIC_* secrets from Doppler
-        if: matrix.app == 'web'
         uses: dopplerhq/secrets-fetch-action@v1.3.0
         id: doppler
         with:
@@ -55,26 +52,28 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/${{ matrix.app }}/Dockerfile
+          file: Dockerfile
           platforms: ${{ matrix.platform }}
+          # web→api 프록시 타깃은 브라우저 비노출 서버사이드 값이라 build-arg가 아니다
+          # (next.config.ts의 API_PROXY_TARGET 런타임 env, 기본값 localhost:10151).
           build-args: |
-            ${{ matrix.app == 'web' && format('NEXT_PUBLIC_API_URL={0}', steps.doppler.outputs.NEXT_PUBLIC_API_URL) || '' }}
-            ${{ matrix.app == 'web' && format('NEXT_PUBLIC_WEB_URL={0}', steps.doppler.outputs.NEXT_PUBLIC_WEB_URL) || '' }}
-          outputs: type=image,name=ghcr.io/${{ env.REPO_LOWER }}/${{ matrix.app }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha,scope=${{ matrix.app }}-${{ matrix.platform }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.app }}-${{ matrix.platform }}
+            NEXT_PUBLIC_WEB_URL=${{ steps.doppler.outputs.NEXT_PUBLIC_WEB_URL }}
+            NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=${{ steps.doppler.outputs.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY }}
+          outputs: type=image,name=ghcr.io/${{ env.REPO_LOWER }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
 
       - name: Export digest
         run: |
-          mkdir -p /tmp/digests/${{ matrix.app }}
+          mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${{ matrix.app }}/${digest#sha256:}"
+          touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digest-${{ matrix.app }}-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          path: /tmp/digests/${{ matrix.app }}/*
+          name: digest-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
+          path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
 
@@ -83,16 +82,13 @@ jobs:
     needs: build
     permissions:
       packages: write
-    strategy:
-      matrix:
-        app: [api, web]
 
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
-          path: /tmp/digests/${{ matrix.app }}
-          pattern: digest-${{ matrix.app }}-*
+          path: /tmp/digests
+          pattern: digest-*
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -112,14 +108,14 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ env.REPO_LOWER }}/${{ matrix.app }}
+          images: ghcr.io/${{ env.REPO_LOWER }}
           tags: |
             type=raw,value=latest
             type=sha,format=short
 
       - name: Create and push manifest
-        working-directory: /tmp/digests/${{ matrix.app }}
+        working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf 'ghcr.io/${{ env.REPO_LOWER }}/${{ matrix.app }}@sha256:%s ' *)
+            $(printf 'ghcr.io/${{ env.REPO_LOWER }}@sha256:%s ' *)

@@ -179,12 +179,49 @@ export class AuthController {
 
   // --- Actual Social Login Implementation ---
 
+  // 로그인을 시작한 요청의 오리진을 기준으로 기본 리다이렉트 주소를 만든다.
+  // (OAuth 콜백 시점에는 원래 오리진을 알 수 없으므로 시작 시점에 잡아 전파한다.)
+  private resolveDefaultRedirect(req: any): string {
+    const referer = req.headers?.referer;
+    const origin =
+      req.headers?.origin ||
+      (referer ? new URL(referer).origin : '') ||
+      CONFIG.WEB_URL;
+    return `${origin}/profile`;
+  }
+
+  // 요청이 실제로 들어온 공개 오리진을 기준으로 API 베이스 URL을 만든다.
+  // (리버스 프록시 뒤이므로 x-forwarded-* 헤더를 우선 사용. trust proxy 활성화됨)
+  // OAuth redirect_uri 는 인가요청과 토큰교환에서 동일해야 하므로 양쪽 모두 이걸 사용한다.
+  //
+  // 웹(Next.js)이 /api/:path* 를 API로 rewrite(=/api 프리픽스를 떼고 전달)하므로,
+  // 브라우저가 보는 공개 API 경로는 `{origin}/api/...` 이다. API 자신은 프리픽스를
+  // 받지 못하니, x-forwarded-prefix 가 없으면 웹 컨벤션인 '/api' 를 붙여 복원한다.
+  private resolveApiBaseUrl(req: any): string {
+    const proto =
+      (req.headers?.['x-forwarded-proto'] as string)?.split(',')[0]?.trim() ||
+      req.protocol ||
+      'https';
+    const host =
+      (req.headers?.['x-forwarded-host'] as string)?.split(',')[0]?.trim() ||
+      req.headers?.host;
+    if (!host) return CONFIG.API_URL;
+    const prefix = (
+      (req.headers?.['x-forwarded-prefix'] as string) ?? '/api'
+    ).replace(/\/$/, '');
+    return `${proto}://${host}${prefix}`;
+  }
+
   @Get('kakao')
-  async kakaoLogin(@Res() res: any, @Query('redirect') redirect?: string) {
+  async kakaoLogin(
+    @Res() res: any,
+    @Req() req: any,
+    @Query('redirect') redirect?: string,
+  ) {
     const callbackUrl = encodeURIComponent(
-      `${CONFIG.API_URL}/auth/kakao/callback`,
+      `${this.resolveApiBaseUrl(req)}/auth/kakao/callback`,
     );
-    const state = redirect || '';
+    const state = redirect || this.resolveDefaultRedirect(req);
     const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${CONFIG.KAKAO.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&state=${state}`;
     return res.redirect(kakaoAuthUrl);
   }
@@ -196,7 +233,7 @@ export class AuthController {
     @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
-    const callbackUrl = `${CONFIG.API_URL}/auth/kakao/callback`;
+    const callbackUrl = `${this.resolveApiBaseUrl(req)}/auth/kakao/callback`;
     const finalRedirect = state;
 
     let currentUserId: string | undefined;
@@ -237,10 +274,15 @@ export class AuthController {
   }
 
   @Get('naver')
-  async naverLogin(@Res() res: any, @Query('redirect') redirect?: string) {
+  async naverLogin(
+    @Res() res: any,
+    @Req() req: any,
+    @Query('redirect') redirect?: string,
+  ) {
     const state = Math.random().toString(36).substring(2, 12);
+    const finalRedirect = redirect || this.resolveDefaultRedirect(req);
     const callbackUrl = encodeURIComponent(
-      `${CONFIG.API_URL}/auth/naver/callback?finalRedirect=${redirect || ''}`,
+      `${this.resolveApiBaseUrl(req)}/auth/naver/callback?finalRedirect=${finalRedirect}`,
     );
     const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?client_id=${CONFIG.NAVER.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&state=${state}`;
     return res.redirect(naverAuthUrl);
@@ -292,22 +334,30 @@ export class AuthController {
   }
 
   @Get('google')
-  async googleLogin(@Res() res: any, @Query('redirect') redirect?: string) {
+  async googleLogin(
+    @Res() res: any,
+    @Req() req: any,
+    @Query('redirect') redirect?: string,
+  ) {
+    const finalRedirect = redirect || this.resolveDefaultRedirect(req);
+    // 구글은 등록된 redirect_uri 와 쿼리스트링까지 정확히 일치해야 하므로,
+    // finalRedirect 는 쿼리 대신 state 로 전달한다(카카오와 동일 방식).
     const callbackUrl = encodeURIComponent(
-      `${CONFIG.API_URL}/auth/google/callback?finalRedirect=${redirect || ''}`,
+      `${this.resolveApiBaseUrl(req)}/auth/google/callback`,
     );
-    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CONFIG.GOOGLE.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&scope=openid%20profile%20email`;
+    const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CONFIG.GOOGLE.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&scope=openid%20profile%20email&state=${encodeURIComponent(finalRedirect)}`;
     return res.redirect(googleAuthUrl);
   }
 
   @Get('google/callback')
   async googleCallback(
     @Query('code') code: string,
-    @Query('finalRedirect') finalRedirect: string,
+    @Query('state') state: string,
     @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
-    const callbackUrl = `${CONFIG.API_URL}/auth/google/callback?finalRedirect=${finalRedirect}`;
+    const finalRedirect = state;
+    const callbackUrl = `${this.resolveApiBaseUrl(req)}/auth/google/callback`;
 
     let currentUserId: string | undefined;
     const token = req.cookies?.access_token;

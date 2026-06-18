@@ -5,6 +5,7 @@ export const SERVICE_REGISTRY = [
   { value: 'lostark', label: '게임' },
   { value: 'wrua', label: '일정관리' },
   { value: 'alimtalk', label: '알림톡' },
+  { value: 'payment', label: '결제' },
 ] as const;
 
 export type ServiceValue = (typeof SERVICE_REGISTRY)[number]['value'];
