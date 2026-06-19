@@ -36,6 +36,10 @@ import { CurrentApiKey } from '../common/decorators/api-key.decorator.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
 import { AlimtalkSendDto } from './dto/alimtalk-send.dto.js';
 import {
+  AddChannelDto,
+  RequestChannelAuthDto,
+} from './dto/alimtalk-channel.dto.js';
+import {
   GeneralResponseDto,
   SendResultDataDto,
   ResultCheckDataDto,
@@ -91,14 +95,7 @@ export class AlimtalkController {
     description: '전송받은 인증번호를 입력하여 채널을 최종 등록해요.',
   })
   addChannel(
-    @Body()
-    body: {
-      plusId: string;
-      authNum: string;
-      phone: string;
-      categoryCode: string;
-      name: string;
-    },
+    @Body() body: AddChannelDto,
     @CurrentApiKey() apiKey: ApiKey,
     @Req() req: Request,
   ) {
@@ -111,7 +108,7 @@ export class AlimtalkController {
     description:
       '카카오 채널 등록을 위한 인증번호를 요청해요. 입력한 전화번호로 전송돼요.',
   })
-  requestChannelAuth(@Body() body: { plusId: string; phone: string }) {
+  requestChannelAuth(@Body() body: RequestChannelAuthDto) {
     return this.alimtalkService.requestChannelAuth(body.plusId, body.phone);
   }
 

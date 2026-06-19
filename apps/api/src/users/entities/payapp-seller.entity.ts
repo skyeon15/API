@@ -32,7 +32,7 @@ export class PayappSeller extends BaseEntity {
   linkVal: string; // 연동 VALUE
 
   @Column({ type: 'text', nullable: true })
-  memo: string; // 메모
+  memo: string | null; // 메모
 
   @Column({ default: true })
   isActive: boolean;

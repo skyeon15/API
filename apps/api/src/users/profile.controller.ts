@@ -18,10 +18,7 @@ import { User } from './entities/user.entity.js';
 import { PaymentMethod } from './entities/payment-method.entity.js';
 import { PayappSeller } from './entities/payapp-seller.entity.js';
 import { PaymentTransaction } from './entities/payment-transaction.entity.js';
-import {
-  CashReceipt,
-  CashReceiptType,
-} from './entities/cash-receipt.entity.js';
+import { CashReceipt } from './entities/cash-receipt.entity.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ApiKeyOrSessionGuard } from '../common/guards/api-key-or-session.guard.js';
@@ -31,10 +28,30 @@ import {
   ApiOperation,
   ApiBearerAuth,
   ApiExcludeEndpoint,
+  ApiOkResponse,
+  ApiCreatedResponse,
 } from '@nestjs/swagger';
 import { randomBytes } from 'crypto';
 import { PaymentService } from './payment.service.js';
 import { StripeService } from './stripe.service.js';
+import { resolveApiBaseUrl } from '../common/utils/request-url.util.js';
+import {
+  RegisterSellerDto,
+  CheckSellerIdDto,
+  UpdateSellerDto,
+  RegisterPaymentDto,
+  UpdatePaymentDto,
+  ChargeCardDto,
+  CancelTransactionDto,
+  IssueCashReceiptDto,
+  RegisterStripeCardDto,
+  CreateStripePaymentIntentDto,
+  ChargeStripeDto,
+  RefundStripeDto,
+  PayappSellerResponseDto,
+  CheckSellerIdResponseDto,
+  SuccessResponseDto,
+} from './dto/profile.dto.js';
 
 // 판매자·결제 관련 엔드포인트는 세션 쿠키 또는 API 키(Bearer)로 호출 가능.
 // 단, 'me'·'api-keys'(아래 @ApiExcludeEndpoint/JwtAuthGuard)는 세션 쿠키 전용으로 유지.
@@ -66,6 +83,7 @@ export class ProfileController {
     if (!userId) throw new UnauthorizedException('로그인이 필요합니다.');
     return userId;
   }
+
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
@@ -152,6 +170,7 @@ export class ProfileController {
 
   @Get('sellers')
   @ApiOperation({ summary: '내 판매자 계정 목록' })
+  @ApiOkResponse({ type: [PayappSellerResponseDto] })
   async getSellers(@Req() req: any) {
     const userId = this.getUserId(req);
     return this.sellerRepo.find({ where: { userId, isActive: true } });
@@ -159,7 +178,8 @@ export class ProfileController {
 
   @Post('sellers')
   @ApiOperation({ summary: '판매자 계정 등록' })
-  async registerSeller(@Req() req: any, @Body() body: any) {
+  @ApiCreatedResponse({ type: PayappSellerResponseDto })
+  async registerSeller(@Req() req: any, @Body() body: RegisterSellerDto) {
     const userId = this.getUserId(req);
     const user = await this.userRepo.findOneBy({ id: userId });
     if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
@@ -168,13 +188,31 @@ export class ProfileController {
 
   @Post('sellers/check-id')
   @ApiOperation({ summary: '판매자 아이디 중복 확인' })
-  async checkSellerId(@Body('sellerId') sellerId: string) {
-    if (!sellerId) throw new BadRequestException('아이디를 입력해주세요.');
-    return this.paymentService.checkSellerId(sellerId);
+  @ApiCreatedResponse({ type: CheckSellerIdResponseDto })
+  async checkSellerId(@Body() body: CheckSellerIdDto) {
+    if (!body?.sellerId) throw new BadRequestException('아이디를 입력해주세요.');
+    return this.paymentService.checkSellerId(body.sellerId);
+  }
+
+  @Patch('sellers/:id')
+  @ApiOperation({ summary: '판매자 계정 정보 수정 (메모)' })
+  @ApiOkResponse({ type: PayappSellerResponseDto })
+  async updateSeller(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: UpdateSellerDto,
+  ) {
+    const userId = this.getUserId(req);
+    const seller = await this.sellerRepo.findOneBy({ id, userId });
+    if (!seller) throw new NotFoundException('판매자 계정을 찾을 수 없습니다.');
+
+    if (typeof body.memo === 'string') seller.memo = body.memo.trim() || null;
+    return this.sellerRepo.save(seller);
   }
 
   @Delete('sellers/:id')
   @ApiOperation({ summary: '판매자 계정 삭제' })
+  @ApiOkResponse({ type: SuccessResponseDto })
   async deleteSeller(@Req() req: any, @Param('id') id: string) {
     const userId = this.getUserId(req);
     const seller = await this.sellerRepo.findOneBy({ id, userId });
@@ -197,15 +235,7 @@ export class ProfileController {
   @ApiOperation({ summary: '결제 수단 등록' })
   async registerPayment(
     @Req() req: any,
-    @Body()
-    body: {
-      sellerId: string;
-      cardNo: string;
-      expMonth: string;
-      expYear: string;
-      cardPw: string;
-      buyerAuthNo: string;
-    },
+    @Body() body: RegisterPaymentDto,
   ) {
     if (!body?.sellerId) {
       throw new BadRequestException('판매자 계정을 선택해주세요.');
@@ -222,13 +252,14 @@ export class ProfileController {
   async updatePayment(
     @Req() req: any,
     @Param('id') id: string,
-    @Body('cardName') cardName: string,
+    @Body() body: UpdatePaymentDto,
   ) {
     const userId = this.getUserId(req);
     const payment = await this.paymentRepo.findOneBy({ id, userId });
     if (!payment) throw new NotFoundException('결제 수단을 찾을 수 없습니다.');
 
-    payment.cardName = cardName;
+    if (typeof body.cardName === 'string') payment.cardName = body.cardName;
+    if (typeof body.memo === 'string') payment.memo = body.memo.trim() || null;
     return this.paymentRepo.save(payment);
   }
 
@@ -260,17 +291,7 @@ export class ProfileController {
   @ApiOperation({ summary: '등록된 카드로 결제' })
   async chargeCard(
     @Req() req: any,
-    @Body()
-    body: {
-      paymentMethodId: string;
-      sellerId: string;
-      goodName: string;
-      amount: number;
-      buyerName?: string;
-      buyerPhone?: string;
-      memo?: string;
-      feedbackUrl?: string;
-    },
+    @Body() body: ChargeCardDto,
   ) {
     const userId = this.getUserId(req);
     const user = await this.userRepo.findOneBy({ id: userId });
@@ -278,7 +299,10 @@ export class ProfileController {
     if (!body?.paymentMethodId || !body?.sellerId || !body?.goodName) {
       throw new BadRequestException('필수 항목이 누락되었습니다.');
     }
-    return this.paymentService.chargeCard(user, body);
+    return this.paymentService.chargeCard(user, {
+      ...body,
+      feedbackBaseUrl: resolveApiBaseUrl(req),
+    });
   }
 
   @Post('payments/transactions/:id/cancel')
@@ -286,7 +310,7 @@ export class ProfileController {
   async cancelTransaction(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { amount?: number; memo?: string },
+    @Body() body: CancelTransactionDto,
   ) {
     const userId = this.getUserId(req);
     const user = await this.userRepo.findOneBy({ id: userId });
@@ -307,16 +331,7 @@ export class ProfileController {
   @ApiOperation({ summary: '현금영수증 발급' })
   async issueCashReceipt(
     @Req() req: any,
-    @Body()
-    body: {
-      sellerId: string;
-      type: CashReceiptType;
-      buyerName: string;
-      idInfo: string;
-      goodName: string;
-      amount: number;
-      transactionId?: string;
-    },
+    @Body() body: IssueCashReceiptDto,
   ) {
     const userId = this.getUserId(req);
     const user = await this.userRepo.findOneBy({ id: userId });
@@ -331,7 +346,10 @@ export class ProfileController {
     ) {
       throw new BadRequestException('필수 항목이 누락되었습니다.');
     }
-    return this.paymentService.issueCashReceipt(user, body);
+    return this.paymentService.issueCashReceipt(user, {
+      ...body,
+      feedbackBaseUrl: resolveApiBaseUrl(req),
+    });
   }
 
   @Post('cash-receipts/:id/cancel')
@@ -363,26 +381,20 @@ export class ProfileController {
   @ApiOperation({ summary: 'Stripe 카드 저장 확정(SetupIntent 확정 직후)' })
   async registerStripeCard(
     @Req() req: any,
-    @Body('setupIntentId') setupIntentId: string,
+    @Body() body: RegisterStripeCardDto,
   ) {
     const user = await this.requireUser(req);
-    if (!setupIntentId) {
+    if (!body?.setupIntentId) {
       throw new BadRequestException('setupIntentId가 필요합니다.');
     }
-    return this.stripeService.registerSavedCard(user, setupIntentId);
+    return this.stripeService.registerSavedCard(user, body.setupIntentId);
   }
 
   @Post('stripe/payment-intent')
   @ApiOperation({ summary: 'Stripe 일회성 결제용 PaymentIntent 발급' })
   async createStripePaymentIntent(
     @Req() req: any,
-    @Body()
-    body: {
-      amount: number;
-      currency?: string;
-      goodName: string;
-      savePaymentMethod?: boolean;
-    },
+    @Body() body: CreateStripePaymentIntentDto,
   ) {
     const user = await this.requireUser(req);
     if (!body?.amount || !body?.goodName) {
@@ -395,14 +407,7 @@ export class ProfileController {
   @ApiOperation({ summary: 'Stripe 저장 카드로 빌링 결제(off_session)' })
   async chargeStripe(
     @Req() req: any,
-    @Body()
-    body: {
-      paymentMethodId: string;
-      amount: number;
-      currency?: string;
-      goodName: string;
-      memo?: string;
-    },
+    @Body() body: ChargeStripeDto,
   ) {
     const user = await this.requireUser(req);
     if (!body?.paymentMethodId || !body?.amount || !body?.goodName) {
@@ -416,7 +421,7 @@ export class ProfileController {
   async refundStripe(
     @Req() req: any,
     @Param('id') id: string,
-    @Body() body: { amount?: number; reason?: string },
+    @Body() body: RefundStripeDto,
   ) {
     const user = await this.requireUser(req);
     return this.stripeService.refundTransaction(user, id, body || {});

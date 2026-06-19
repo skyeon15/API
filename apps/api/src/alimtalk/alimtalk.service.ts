@@ -484,7 +484,7 @@ export class AlimtalkService {
     dto: AlimtalkSendDto,
     ctx: AuditContext,
   ): Promise<GeneralResponseDto<SendResultDataDto>> {
-    const tid = generateTid('PAT');
+    const tid = generateTid('PDS-TAK');
     const channelWhere: FindOptionsWhere<AlimtalkChannel> = {
       id: dto.channelId,
       isActive: true,

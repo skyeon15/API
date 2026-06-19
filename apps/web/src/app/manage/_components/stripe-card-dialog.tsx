@@ -122,10 +122,8 @@ export function StripeCardDialog({ onSaved }: { onSaved: () => void }) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="w-full">
-          Stripe 카드 등록 (해외/정기결제)
-        </Button>
+      <DialogTrigger render={<Button variant="outline" className="w-full" />}>
+        Stripe 카드 등록 (해외/정기결제)
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

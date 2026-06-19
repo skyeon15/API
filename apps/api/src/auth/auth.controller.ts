@@ -20,6 +20,7 @@ import { Repository } from 'typeorm';
 import { OauthClient } from './entities/oauth-client.entity.js';
 import { SocialProvider } from './entities/user-social-account.entity.js';
 import { CONFIG } from '../common/constants.js';
+import { resolveApiBaseUrl } from '../common/utils/request-url.util.js';
 
 const COOKIE_OPTIONS = {
   httpOnly: true,
@@ -190,27 +191,6 @@ export class AuthController {
     return `${origin}/profile`;
   }
 
-  // 요청이 실제로 들어온 공개 오리진을 기준으로 API 베이스 URL을 만든다.
-  // (리버스 프록시 뒤이므로 x-forwarded-* 헤더를 우선 사용. trust proxy 활성화됨)
-  // OAuth redirect_uri 는 인가요청과 토큰교환에서 동일해야 하므로 양쪽 모두 이걸 사용한다.
-  //
-  // 웹(Next.js)이 /api/:path* 를 API로 rewrite(=/api 프리픽스를 떼고 전달)하므로,
-  // 브라우저가 보는 공개 API 경로는 `{origin}/api/...` 이다. API 자신은 프리픽스를
-  // 받지 못하니, x-forwarded-prefix 가 없으면 웹 컨벤션인 '/api' 를 붙여 복원한다.
-  private resolveApiBaseUrl(req: any): string {
-    const proto =
-      (req.headers?.['x-forwarded-proto'] as string)?.split(',')[0]?.trim() ||
-      req.protocol ||
-      'https';
-    const host =
-      (req.headers?.['x-forwarded-host'] as string)?.split(',')[0]?.trim() ||
-      req.headers?.host;
-    if (!host) return CONFIG.API_URL;
-    const prefix = (
-      (req.headers?.['x-forwarded-prefix'] as string) ?? '/api'
-    ).replace(/\/$/, '');
-    return `${proto}://${host}${prefix}`;
-  }
 
   @Get('kakao')
   async kakaoLogin(
@@ -219,7 +199,7 @@ export class AuthController {
     @Query('redirect') redirect?: string,
   ) {
     const callbackUrl = encodeURIComponent(
-      `${this.resolveApiBaseUrl(req)}/auth/kakao/callback`,
+      `${resolveApiBaseUrl(req)}/auth/kakao/callback`,
     );
     const state = redirect || this.resolveDefaultRedirect(req);
     const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${CONFIG.KAKAO.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&state=${state}`;
@@ -233,7 +213,7 @@ export class AuthController {
     @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
-    const callbackUrl = `${this.resolveApiBaseUrl(req)}/auth/kakao/callback`;
+    const callbackUrl = `${resolveApiBaseUrl(req)}/auth/kakao/callback`;
     const finalRedirect = state;
 
     let currentUserId: string | undefined;
@@ -282,7 +262,7 @@ export class AuthController {
     const state = Math.random().toString(36).substring(2, 12);
     const finalRedirect = redirect || this.resolveDefaultRedirect(req);
     const callbackUrl = encodeURIComponent(
-      `${this.resolveApiBaseUrl(req)}/auth/naver/callback?finalRedirect=${finalRedirect}`,
+      `${resolveApiBaseUrl(req)}/auth/naver/callback?finalRedirect=${finalRedirect}`,
     );
     const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?client_id=${CONFIG.NAVER.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&state=${state}`;
     return res.redirect(naverAuthUrl);
@@ -343,7 +323,7 @@ export class AuthController {
     // 구글은 등록된 redirect_uri 와 쿼리스트링까지 정확히 일치해야 하므로,
     // finalRedirect 는 쿼리 대신 state 로 전달한다(카카오와 동일 방식).
     const callbackUrl = encodeURIComponent(
-      `${this.resolveApiBaseUrl(req)}/auth/google/callback`,
+      `${resolveApiBaseUrl(req)}/auth/google/callback`,
     );
     const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${CONFIG.GOOGLE.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&scope=openid%20profile%20email&state=${encodeURIComponent(finalRedirect)}`;
     return res.redirect(googleAuthUrl);
@@ -357,7 +337,7 @@ export class AuthController {
     @Res({ passthrough: true }) res: any,
   ) {
     const finalRedirect = state;
-    const callbackUrl = `${this.resolveApiBaseUrl(req)}/auth/google/callback`;
+    const callbackUrl = `${resolveApiBaseUrl(req)}/auth/google/callback`;
 
     let currentUserId: string | undefined;
     const token = req.cookies?.access_token;

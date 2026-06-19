@@ -14,13 +14,13 @@ import {
   ApiTags,
   ApiOperation,
   ApiQuery,
-  ApiBody,
   ApiResponse,
   ApiBearerAuth,
   ApiUnauthorizedResponse,
   ApiForbiddenResponse,
   ApiHeader,
 } from '@nestjs/swagger';
+import { SearchTogetherDto } from './dto/search-together.dto.js';
 
 @ApiTags('일정관리')
 @ApiBearerAuth('api-key')
@@ -72,26 +72,13 @@ export class WruaController {
     required: true,
     example: '에케',
   })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['withName'],
-      properties: {
-        withName: {
-          type: 'string',
-          description: '함께한 사람의 이름',
-          example: '광현',
-        },
-      },
-    },
-  })
   @ApiResponse({
     status: 201,
     description: '함께한 일정 목록을 성공적으로 찾았어요.',
   })
   async searchTogether(
     @Query('name') calendarOwner: string,
-    @Body() body: any,
+    @Body() body: SearchTogetherDto,
     @Ip() clientIp: string,
   ) {
     // IPv6 support for local testing (::1 or ::ffff:127.0.0.1)

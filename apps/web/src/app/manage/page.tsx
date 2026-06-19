@@ -43,6 +43,8 @@ interface Payment {
   cardNo: string;
   sellerId?: string | null;
   provider?: 'payapp' | 'stripe';
+  memo?: string | null;
+  createdAt?: string;
 }
 
 interface Seller {
@@ -50,7 +52,7 @@ interface Seller {
   sellerId: string;
   linkKey: string;
   linkVal: string;
-  memo: string;
+  memo: string | null;
 }
 
 interface Transaction {
@@ -70,6 +72,7 @@ interface Transaction {
   status: 'pending' | 'paid' | 'partial_cancelled' | 'cancelled' | 'failed';
   paidAt: string | null;
   cancelledAt: string | null;
+  receiptUrl: string | null;
   memo: string | null;
   createdAt: string;
 }
@@ -155,6 +158,10 @@ export default function ManagePage() {
   const [editingKeyName, setEditingKeyName] = useState('');
   const [editingPaymentId, setEditingPaymentId] = useState<number | null>(null);
   const [editingPaymentName, setEditingPaymentName] = useState('');
+  const [editingMemoId, setEditingMemoId] = useState<number | null>(null);
+  const [editingMemoValue, setEditingMemoValue] = useState('');
+  const [editingSellerMemoId, setEditingSellerMemoId] = useState<number | null>(null);
+  const [editingSellerMemoValue, setEditingSellerMemoValue] = useState('');
   const [copiedKeyId, setCopiedKeyId] = useState<number | null>(null);
 
   // 결제 수단 추가 관련 상태
@@ -165,6 +172,7 @@ export default function ManagePage() {
     expYear: '',
     cardPw: '',
     buyerAuthNo: '',
+    memo: '',
   });
   const [isAddingPayment, setIsAddingPayment] = useState(false);
   const [addPaymentOpen, setAddPaymentOpen] = useState(false);
@@ -187,6 +195,9 @@ export default function ManagePage() {
     biztype1: '',
     biztype2: '',
     ceo_nm: '',
+    bankName: '',
+    bankAccountNo: '',
+    bankHolder: '',
   });
 
   const formatPhone = (val: string) => {
@@ -457,14 +468,17 @@ export default function ManagePage() {
     }
   };
 
-  const handleUpdatePayment = async (id: number, cardName: string) => {
+  const handleUpdatePayment = async (
+    id: number,
+    patch: { cardName?: string; memo?: string | null },
+  ) => {
     const prev = payments.find((p) => p.id === id);
-    setPayments((pays) => pays.map((p) => (p.id === id ? { ...p, cardName } : p)));
+    setPayments((pays) => pays.map((p) => (p.id === id ? { ...p, ...patch } : p)));
     try {
       await apiFetch(`${API_BASE}/profile/payments/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ cardName }),
+        body: JSON.stringify(patch),
         credentials: 'include',
       });
     } catch {
@@ -498,13 +512,14 @@ export default function ManagePage() {
           expYear: newCard.expYear,
           cardPw: newCard.cardPw,
           buyerAuthNo: newCard.buyerAuthNo,
+          memo: newCard.memo || undefined,
         }),
         credentials: 'include',
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || '등록 실패');
       setPaymentSuccess('카드가 성공적으로 등록되었습니다.');
-      setNewCard({ sellerId: '', cardNo: '', expMonth: '', expYear: '', cardPw: '', buyerAuthNo: '' });
+      setNewCard({ sellerId: '', cardNo: '', expMonth: '', expYear: '', cardPw: '', buyerAuthNo: '', memo: '' });
       setTimeout(() => {
         setAddPaymentOpen(false);
         setPaymentSuccess('');
@@ -597,6 +612,22 @@ export default function ManagePage() {
       fetchData();
     } catch {
       alert('삭제 실패');
+    }
+  };
+
+  const handleUpdateSeller = async (id: number, patch: { memo?: string | null }) => {
+    const prev = sellers.find((s) => s.id === id);
+    setSellers((ss) => ss.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+    try {
+      await apiFetch(`${API_BASE}/profile/sellers/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+        credentials: 'include',
+      });
+    } catch {
+      if (prev) setSellers((ss) => ss.map((s) => (s.id === id ? prev : s)));
+      alert('수정 실패');
     }
   };
 
@@ -716,12 +747,14 @@ export default function ManagePage() {
                         </span>
                       </div>
                       <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive">
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </Button>
+                        <DialogTrigger
+                          render={
+                            <Button variant="ghost" size="icon" className="text-muted-foreground hover:text-destructive" />
+                          }
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
@@ -806,17 +839,51 @@ export default function ManagePage() {
                   <p className="text-xs text-muted-foreground font-mono truncate">
                     KEY: {s.linkKey.slice(0, 8)}... / VAL: {s.linkVal.slice(0, 4)}...
                   </p>
-                  {s.memo && (
-                    <p className="text-xs text-muted-foreground mt-1 border-t pt-1">
-                      메모: {s.memo}
-                    </p>
+                  {editingSellerMemoId === s.id ? (
+                    <form
+                      className="mt-1 border-t pt-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        handleUpdateSeller(s.id, { memo: editingSellerMemoValue.trim() });
+                        setEditingSellerMemoId(null);
+                      }}
+                    >
+                      <Input
+                        autoFocus
+                        value={editingSellerMemoValue}
+                        onChange={(e) => setEditingSellerMemoValue(e.target.value)}
+                        onBlur={() => {
+                          handleUpdateSeller(s.id, { memo: editingSellerMemoValue.trim() });
+                          setEditingSellerMemoId(null);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') setEditingSellerMemoId(null);
+                        }}
+                        placeholder="메모 입력"
+                        className="h-7 text-xs"
+                      />
+                    </form>
+                  ) : (
+                    <button
+                      type="button"
+                      className="text-xs text-muted-foreground hover:underline decoration-dashed underline-offset-2 cursor-text block mt-1 border-t pt-1 w-full text-left"
+                      onClick={() => {
+                        setEditingSellerMemoId(s.id);
+                        setEditingSellerMemoValue(s.memo ?? '');
+                      }}
+                      title="클릭하여 메모 편집"
+                    >
+                      {s.memo ? `메모: ${s.memo}` : '메모 추가'}
+                    </button>
                   )}
                 </div>
                 <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive shrink-0">
-                      삭제
-                    </Button>
+                  <DialogTrigger
+                    render={
+                      <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive shrink-0" />
+                    }
+                  >
+                    삭제
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
@@ -846,10 +913,10 @@ export default function ManagePage() {
 
             <div className="pt-2">
               <Dialog open={addSellerOpen} onOpenChange={setAddSellerOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">
-                    판매자 계정 가입/등록
-                  </Button>
+                <DialogTrigger
+                  render={<Button variant="outline" className="w-full" />}
+                >
+                  판매자 계정 가입/등록
                 </DialogTrigger>
                 <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
@@ -1078,6 +1145,46 @@ export default function ManagePage() {
                       </div>
                     )}
 
+                    <div className="space-y-4 border-t pt-4 mt-4">
+                      <p className="text-sm font-semibold">
+                        정산 정보 <span className="font-normal text-muted-foreground">(선택)</span>
+                      </p>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="bankName">정산은행</Label>
+                          <Input
+                            id="bankName"
+                            value={newSeller.bankName}
+                            onChange={(e) =>
+                              setNewSeller({ ...newSeller, bankName: e.target.value })
+                            }
+                            placeholder="예: 국민은행"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="bankHolder">예금주</Label>
+                          <Input
+                            id="bankHolder"
+                            value={newSeller.bankHolder}
+                            onChange={(e) =>
+                              setNewSeller({ ...newSeller, bankHolder: e.target.value })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="bankAccountNo">계좌번호</Label>
+                        <Input
+                          id="bankAccountNo"
+                          value={newSeller.bankAccountNo}
+                          onChange={(e) =>
+                            setNewSeller({ ...newSeller, bankAccountNo: e.target.value })
+                          }
+                          placeholder="'-' 없이 숫자만"
+                        />
+                      </div>
+                    </div>
+
                     <div className="space-y-2">
                       <Label htmlFor="memo">메모 (내부 관리용)</Label>
                       <Input
@@ -1122,7 +1229,7 @@ export default function ManagePage() {
                         onSubmit={(e) => {
                           e.preventDefault();
                           if (editingPaymentName.trim()) {
-                            handleUpdatePayment(pm.id, editingPaymentName.trim());
+                            handleUpdatePayment(pm.id, { cardName: editingPaymentName.trim() });
                           }
                           setEditingPaymentId(null);
                         }}
@@ -1133,7 +1240,7 @@ export default function ManagePage() {
                           onChange={(e) => setEditingPaymentName(e.target.value)}
                           onBlur={() => {
                             if (editingPaymentName.trim()) {
-                              handleUpdatePayment(pm.id, editingPaymentName.trim());
+                              handleUpdatePayment(pm.id, { cardName: editingPaymentName.trim() });
                             }
                             setEditingPaymentId(null);
                           }}
@@ -1163,14 +1270,58 @@ export default function ManagePage() {
                           · 판매자 {sellers.find((s) => String(s.id) === String(pm.sellerId))?.sellerId ?? '-'}
                         </span>
                       )}
+                      {pm.createdAt && (
+                        <span className="ml-2">
+                          · 등록 {new Date(pm.createdAt).toLocaleDateString('ko-KR')}
+                        </span>
+                      )}
                     </p>
+                    {editingMemoId === pm.id ? (
+                      <form
+                        className="mt-0.5"
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          handleUpdatePayment(pm.id, { memo: editingMemoValue.trim() });
+                          setEditingMemoId(null);
+                        }}
+                      >
+                        <Input
+                          autoFocus
+                          value={editingMemoValue}
+                          onChange={(e) => setEditingMemoValue(e.target.value)}
+                          onBlur={() => {
+                            handleUpdatePayment(pm.id, { memo: editingMemoValue.trim() });
+                            setEditingMemoId(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Escape') setEditingMemoId(null);
+                          }}
+                          placeholder="메모 입력"
+                          className="h-7 text-xs"
+                        />
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        className="text-xs text-muted-foreground hover:underline decoration-dashed underline-offset-2 cursor-text block mt-0.5"
+                        onClick={() => {
+                          setEditingMemoId(pm.id);
+                          setEditingMemoValue(pm.memo ?? '');
+                        }}
+                        title="클릭하여 메모 편집"
+                      >
+                        {pm.memo ? `메모: ${pm.memo}` : '메모 추가'}
+                      </button>
+                    )}
                   </div>
                 </div>
                 <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive">
-                      삭제
-                    </Button>
+                  <DialogTrigger
+                    render={
+                      <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive" />
+                    }
+                  >
+                    삭제
                   </DialogTrigger>
                   <DialogContent>
                     <DialogHeader>
@@ -1200,10 +1351,10 @@ export default function ManagePage() {
 
             <div className="pt-2">
               <Dialog open={addPaymentOpen} onOpenChange={setAddPaymentOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="outline" className="w-full">
-                    결제 카드 추가
-                  </Button>
+                <DialogTrigger
+                  render={<Button variant="outline" className="w-full" />}
+                >
+                  결제 카드 추가
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
@@ -1330,6 +1481,15 @@ export default function ManagePage() {
                         />
                       </div>
                     </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="cardMemo">메모 (내부 관리용)</Label>
+                      <Input
+                        id="cardMemo"
+                        value={newCard.memo}
+                        onChange={(e) => setNewCard({ ...newCard, memo: e.target.value })}
+                        placeholder="예: 정기결제용 법인카드"
+                      />
+                    </div>
                     <DialogFooter>
                       <Button type="submit" disabled={isAddingPayment || sellers.length === 0}>
                         {isAddingPayment ? '등록 중...' : '카드 등록'}
@@ -1391,17 +1551,29 @@ export default function ManagePage() {
                     </span>
                     <span>{new Date(t.createdAt).toLocaleString('ko-KR')}</span>
                   </div>
-                  {canCancel && remaining > 0 && (
-                    <div className="pt-1">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-xs text-muted-foreground hover:text-destructive"
-                        onClick={() => openCancelTx(t)}
-                      >
-                        결제 취소
-                      </Button>
+                  {(t.receiptUrl || (canCancel && remaining > 0)) && (
+                    <div className="flex items-center gap-3 pt-1">
+                      {t.receiptUrl && (
+                        <a
+                          href={t.receiptUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-primary hover:underline"
+                        >
+                          영수증 보기
+                        </a>
+                      )}
+                      {canCancel && remaining > 0 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                          onClick={() => openCancelTx(t)}
+                        >
+                          결제 취소
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -1416,16 +1588,18 @@ export default function ManagePage() {
 
             <div className="pt-2">
               <Dialog open={chargeOpen} onOpenChange={setChargeOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    disabled={payments.length === 0 || sellers.length === 0}
-                  >
-                    {payments.length === 0 || sellers.length === 0
-                      ? '카드와 판매자 계정을 먼저 등록하세요'
-                      : '등록된 카드로 결제'}
-                  </Button>
+                <DialogTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={payments.length === 0 || sellers.length === 0}
+                    />
+                  }
+                >
+                  {payments.length === 0 || sellers.length === 0
+                    ? '카드와 판매자 계정을 먼저 등록하세요'
+                    : '등록된 카드로 결제'}
                 </DialogTrigger>
                 <DialogContent className="max-w-md">
                   <DialogHeader>
@@ -1460,9 +1634,27 @@ export default function ManagePage() {
                           .map((p) => (
                             <option key={p.id} value={String(p.id)}>
                               {p.cardName} {p.cardNo}
+                              {p.createdAt
+                                ? ` · 등록 ${new Date(p.createdAt).toLocaleDateString('ko-KR')}`
+                                : ''}
+                              {p.memo ? ` · ${p.memo}` : ''}
                             </option>
                           ))}
                       </select>
+                      {(() => {
+                        const pm = payments.find(
+                          (p) => String(p.id) === String(chargeForm.paymentMethodId),
+                        );
+                        if (!pm) return null;
+                        return (
+                          <p className="text-xs text-muted-foreground">
+                            {pm.createdAt && (
+                              <>등록일 {new Date(pm.createdAt).toLocaleDateString('ko-KR')}</>
+                            )}
+                            {pm.memo && <> · 메모: {pm.memo}</>}
+                          </p>
+                        );
+                      })()}
                       {chargeForm.sellerId && (
                         <p className="text-xs text-muted-foreground">
                           판매자: {sellers.find((s) => String(s.id) === String(chargeForm.sellerId))?.sellerId ?? '-'} 계정으로 결제됩니다.
@@ -1632,14 +1824,16 @@ export default function ManagePage() {
 
             <div className="pt-2">
               <Dialog open={issueReceiptOpen} onOpenChange={setIssueReceiptOpen}>
-                <DialogTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    disabled={sellers.length === 0}
-                  >
-                    {sellers.length === 0 ? '판매자 계정을 먼저 등록하세요' : '현금영수증 발급'}
-                  </Button>
+                <DialogTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      disabled={sellers.length === 0}
+                    />
+                  }
+                >
+                  {sellers.length === 0 ? '판매자 계정을 먼저 등록하세요' : '현금영수증 발급'}
                 </DialogTrigger>
                 <DialogContent className="max-w-md">
                   <DialogHeader>

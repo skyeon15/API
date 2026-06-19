@@ -1,25 +1,8 @@
 services:
-  # 1. 개발용 DB (Postgres 18)
-  db:
-    image: postgres:18-alpine
-    container_name: pds-db-dev
-    restart: always
-    volumes:
-      - pds-db-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=admin
-      - POSTGRES_PASSWORD=devpass
-      - POSTGRES_DB=pds_api
-      - PGDATA=/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U admin -d pds_api"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    networks:
-      - pds-network
+  # DB는 별도 컨테이너(zemssj, API_DB_HOST=10.0.9.1)로 이관됨.
+  # 앱은 IP로 직접 연결하므로 compose 내 db 서비스는 제거.
 
-  # 2. 개발용 Redis (Cache/Session)
+  # 개발용 Redis (Cache/Session)
   redis:
     image: redis:7-alpine
     container_name: pds-redis-dev
@@ -35,7 +18,7 @@ services:
     networks:
       - pds-network
 
-  # 3. 내 모노레포 코드 (API + Web)
+  # 내 모노레포 코드 (API + Web)
   # 실행: ./scripts/compose-doppler.sh up
   # (스크립트가 Doppler에서 .env.runtime을 생성 후 compose에 주입.
   #  Doppler 대시보드에서 키 추가/삭제 시 이 파일 무수정으로 자동 반영됨.)
@@ -54,8 +37,6 @@ services:
       - "10150:10150" # Web
       - "10151:10151" # API
     depends_on:
-      db:
-        condition: service_healthy
       redis:
         condition: service_healthy
     networks:
@@ -64,7 +45,13 @@ services:
 networks:
   pds-network:
     driver: bridge
+    # subnet/gateway 고정: 앱은 외부 DB(zemssj, 호스트 5432 퍼블리시)에
+    # 네트워크 게이트웨이를 통해 접속한다(API_DB_HOST=10.0.9.1).
+    # 고정하지 않으면 down/up 시 subnet이 바뀌어 게이트웨이 IP가 달라져 DB 연결이 끊긴다.
+    ipam:
+      config:
+        - subnet: 10.0.9.0/24
+          gateway: 10.0.9.1
 
 volumes:
-  pds-db-data:
   pds-redis-data:

@@ -68,6 +68,9 @@ export class PaymentTransaction extends BaseEntity {
   @Column({ type: 'varchar', nullable: true })
   stripePaymentIntentId: string | null; // Stripe PaymentIntent id (pi_xxx)
 
+  @Column({ type: 'varchar', nullable: true })
+  receiptUrl: string | null; // PG 영수증 URL (PayApp: pay_url / Stripe: charge.receipt_url)
+
   // ISO 4217 소문자 (예: krw, usd). Stripe 멀티통화 지원, amount는 최소 화폐단위
   @Column({ type: 'varchar', default: 'krw' })
   currency: string;

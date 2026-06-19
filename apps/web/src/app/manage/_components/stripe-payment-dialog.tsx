@@ -131,10 +131,8 @@ export function StripePaymentDialog({ onPaid }: { onPaid: () => void }) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="w-full">
-          Stripe 결제 (일회성)
-        </Button>
+      <DialogTrigger render={<Button variant="outline" className="w-full" />}>
+        Stripe 결제 (일회성)
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

@@ -21,7 +21,7 @@ import {
 import { User } from './entities/user.entity.js';
 import { firstValueFrom } from 'rxjs';
 import * as qs from 'querystring';
-import { randomBytes } from 'crypto';
+import { generateOrderId } from '../common/utils/id.util.js';
 
 @Injectable()
 export class PaymentService {
@@ -51,14 +51,12 @@ export class PaymentService {
     return qs.parse(response.data) as Record<string, any>;
   }
 
-  private generateOrderId(): string {
-    const ts = Date.now().toString(36);
-    const rand = randomBytes(4).toString('hex');
-    return `api_${ts}_${rand}`;
-  }
-
-  private getWebhookUrl(): string | null {
-    const base = process.env.API_PUBLIC_URL;
+  // baseUrl(공개 API 베이스 URL, 예: https://host/api)이 주어지면 우선 사용하고,
+  // 없으면 환경변수로 폴백한다. 외부 진입점은 web(:10150)이고 /api/* 만 내부 API로
+  // 리버스프록시되므로(next.config rewrites), 공개 콜백 URL은 반드시 /api 를 포함해야 한다.
+  // → 호출부에서 resolveApiBaseUrl(req)로 /api 가 포함된 베이스를 넘긴다.
+  private getWebhookUrl(baseUrl?: string): string | null {
+    const base = baseUrl || process.env.API_PUBLIC_URL;
     if (!base) return null;
     return `${base.replace(/\/+$/, '')}/webhooks/payapp`;
   }
@@ -80,6 +78,10 @@ export class PaymentService {
       biztype1?: string;
       biztype2?: string;
       ceo_nm?: string;
+      // 정산은행 정보 (선택) — 우리 표준 필드명, PayApp 전송 시 매핑
+      bankName?: string;
+      bankAccountNo?: string;
+      bankHolder?: string;
     },
   ) {
     const resellerid =
@@ -114,6 +116,12 @@ export class PaymentService {
     } else {
       postData.username = data.sellerName;
     }
+
+    // 정산은행 정보 (선택) — 개인/사업자 공통, 값이 있을 때만 PayApp 파라미터로 매핑
+    if (data.bankName) postData.compbank = data.bankName;
+    if (data.bankAccountNo)
+      postData.compbanknum = data.bankAccountNo.replace(/\D/g, '');
+    if (data.bankHolder) postData.compbankname = data.bankHolder;
 
     const maskedPostData = {
       ...postData,
@@ -209,6 +217,7 @@ export class PaymentService {
       expYear: string;
       cardPw: string;
       buyerAuthNo: string;
+      memo?: string;
     },
   ) {
     // 빌링키는 판매자 계정에 귀속된다. 카드는 선택한 판매자의 계정으로 등록한다.
@@ -278,6 +287,7 @@ export class PaymentService {
         merchantId: seller.sellerId,
         billingKey: result.encBill,
         isActive: true,
+        memo: cardInfo.memo?.trim() || null,
       });
 
       return await this.sellerRepo.manager.save(payment);
@@ -344,6 +354,7 @@ export class PaymentService {
       buyerPhone?: string;
       memo?: string;
       feedbackUrl?: string;
+      feedbackBaseUrl?: string;
     },
   ) {
     const paymentMethod = await this.paymentRepo.findOneBy({
@@ -369,7 +380,7 @@ export class PaymentService {
       throw new BadRequestException('결제 금액이 유효하지 않습니다.');
     }
 
-    const orderId = this.generateOrderId();
+    const orderId = generateOrderId();
     const tx = this.txRepo.create({
       userId: user.id,
       paymentMethodId: paymentMethod.id,
@@ -386,10 +397,10 @@ export class PaymentService {
     });
     await this.txRepo.save(tx);
 
+    // billPay는 userid + encBill로 인증한다. linkkey를 함께 보내면 errno 20020이 발생한다.
     const postData: Record<string, any> = {
       cmd: 'billPay',
       userid: seller.sellerId,
-      linkkey: seller.linkKey,
       goodname: data.goodName,
       price: String(data.amount),
       recvphone: (data.buyerPhone || user.phone || '').replace(/\D/g, ''),
@@ -397,7 +408,8 @@ export class PaymentService {
       encBill: paymentMethod.billingKey,
       var1: orderId,
     };
-    const feedbackUrl = data.feedbackUrl || this.getWebhookUrl();
+    const feedbackUrl =
+      data.feedbackUrl || this.getWebhookUrl(data.feedbackBaseUrl);
     if (feedbackUrl) postData.feedbackurl = feedbackUrl;
 
     try {
@@ -407,12 +419,32 @@ export class PaymentService {
       if (result.state !== '1') {
         tx.status = PaymentTransactionStatus.FAILED;
         await this.txRepo.save(tx);
+
+        // PayApp 에러 메시지는 generic("요청내용에 오류가 있습니다")인 경우가 많아
+        // 그대로 노출하면 원인 파악이 어렵다. errno를 함께 노출한다.
+        const errno = String(result.errno ?? '');
+        const baseMsg = result.errorMessage || '결제에 실패했습니다.';
+        // errno 20020은 빌링키가 유효한 등록키로 인식되지 않을 때도 발생한다.
+        // 단정하지 않고 가능성만 덧붙인다(금액·상품명 등 다른 파라미터 문제일 수도 있음).
+        const hint =
+          errno === '20020'
+            ? ' (등록된 카드의 빌링키가 만료·무효되었을 수 있습니다. 카드를 다시 등록해 보세요.)'
+            : '';
         throw new BadRequestException(
-          result.errorMessage || '결제에 실패했습니다.',
+          `${baseMsg}${hint}${errno ? ` [PayApp errno: ${errno}]` : ''}`,
         );
       }
 
       tx.mulNo = (result.mul_no as string) || null;
+      // PayApp billPay 영수증 URL은 응답의 CSTURL(고객 결제내역 확인 URL)로 내려온다.
+      // 대소문자/필드명 차이를 방어적으로 수집한다.
+      tx.receiptUrl =
+        (result.CSTURL as string) ||
+        (result.csturl as string) ||
+        (result.payurl as string) ||
+        (result.pay_url as string) ||
+        tx.receiptUrl ||
+        null;
       tx.status = PaymentTransactionStatus.PAID;
       tx.paidAt = new Date();
       return await this.txRepo.save(tx);
@@ -517,6 +549,7 @@ export class PaymentService {
       goodName: string;
       amount: number;
       transactionId?: string;
+      feedbackBaseUrl?: string;
     },
   ) {
     const seller = await this.sellerRepo.findOneBy({
@@ -604,7 +637,7 @@ export class PaymentService {
       amt_tax: String(tax),
       corp_tax_type: 'TG01',
     };
-    const cashFeedbackUrl = this.getWebhookUrl();
+    const cashFeedbackUrl = this.getWebhookUrl(data.feedbackBaseUrl);
     if (cashFeedbackUrl) postData.feedbackurl = cashFeedbackUrl;
 
     try {
@@ -733,6 +766,14 @@ export class PaymentService {
         tx.status = PaymentTransactionStatus.PAID;
         tx.mulNo = tx.mulNo || mulNo;
         if (!tx.paidAt) tx.paidAt = new Date();
+        if (!tx.receiptUrl) {
+          tx.receiptUrl =
+            (body.CSTURL as string) ||
+            (body.csturl as string) ||
+            (body.payurl as string) ||
+            (body.pay_url as string) ||
+            null;
+        }
         break;
       case '8':
       case '9':

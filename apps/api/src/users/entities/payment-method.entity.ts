@@ -51,6 +51,9 @@ export class PaymentMethod extends BaseEntity {
   @Column({ default: true })
   isActive: boolean;
 
+  @Column({ type: 'varchar', nullable: true })
+  memo: string | null; // 내부 관리용 메모
+
   @CreateDateColumn()
   createdAt: Date;
 

@@ -7,9 +7,18 @@ import { CONFIG } from '@/lib/constants';
 interface User {
   id: string;
   name: string;
+  nickname?: string;
+  profileImageUrl?: string;
+  email?: string;
   phone: string;
+  birthDate?: string;
+  gender?: string;
+  address?: string;
+  detailAddress?: string;
+  zipCode?: string;
   roles: string[];
   company?: string;
+  createdAt: string;
 }
 
 interface AuthContextType {

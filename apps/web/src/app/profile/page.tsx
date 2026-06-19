@@ -38,6 +38,8 @@ export default function ProfilePage() {
   // Profile fields
   const [profile, setProfile] = useState({
     name: '',
+    nickname: '',
+    profileImageUrl: '',
     email: '',
     birthDate: '',
     gender: '',
@@ -60,6 +62,8 @@ export default function ProfilePage() {
     }
     setProfile({
       name: user.name || '',
+      nickname: user.nickname || '',
+      profileImageUrl: user.profileImageUrl || '',
       email: user.email || '',
       birthDate: user.birthDate || '',
       gender: user.gender || '',
@@ -180,10 +184,26 @@ export default function ProfilePage() {
                 {profileSuccess && <Alert className="border-green-500 text-green-600"><AlertDescription>정보가 성공적으로 수정되었습니다.</AlertDescription></Alert>}
                 {profileError && <Alert variant="destructive"><AlertDescription>{profileError}</AlertDescription></Alert>}
 
+                <div className="flex items-center gap-4">
+                  <div className="w-16 h-16 rounded-full bg-muted overflow-hidden flex items-center justify-center text-xl font-bold text-muted-foreground shrink-0">
+                    {profile.profileImageUrl
+                      ? <img src={profile.profileImageUrl} alt="프로필 사진" className="w-full h-full object-cover" />
+                      : (profile.nickname || profile.name || '?').charAt(0)}
+                  </div>
+                  <div className="space-y-2 flex-1">
+                    <Label htmlFor="profileImageUrl">프로필 사진 URL</Label>
+                    <Input id="profileImageUrl" type="url" placeholder="https://example.com/photo.jpg" value={profile.profileImageUrl} onChange={(e) => setProfile({ ...profile, profileImageUrl: e.target.value })} />
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">이름</Label>
                     <Input id="name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="nickname">닉네임</Label>
+                    <Input id="nickname" placeholder="닉네임" value={profile.nickname} onChange={(e) => setProfile({ ...profile, nickname: e.target.value })} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">이메일</Label>

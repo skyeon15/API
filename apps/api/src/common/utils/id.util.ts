@@ -1,9 +1,11 @@
+import { randomInt } from 'crypto';
+
 /**
  * 고유한 트랜잭션 ID(TID)를 생성합니다.
- * 형식: {prefix}-{YYMMDD}-{Random6}
- * 예: PAT-260401-A7B8C9
+ * 형식: {prefix}-YYMMDD-NNNNNN
+ * 예: PDS-TAK-260619-374821
  *
- * @param prefix 서비스별 접두어 (예: 'PAT')
+ * @param prefix 서비스별 접두어 (예: 'PDS-TAK')
  * @returns 생성된 TID 문자열
  */
 export function generateTid(prefix: string): string {
@@ -13,12 +15,20 @@ export function generateTid(prefix: string): string {
   const dd = String(now.getDate()).padStart(2, '0');
   const datePart = `${yy}${mm}${dd}`;
 
-  // 6자리 랜덤 영문 대문자 및 숫자 혼합
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-  let randomPart = '';
-  for (let i = 0; i < 6; i++) {
-    randomPart += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+  // 6자리 숫자 (000000~999999)
+  const numberPart = String(randomInt(0, 1_000_000)).padStart(6, '0');
 
-  return `${prefix}-${datePart}-${randomPart}`;
+  return `${prefix}-${datePart}-${numberPart}`;
+}
+
+/**
+ * 결제 주문 ID를 생성합니다.
+ * 형식: PDS-PAY-YYMMDD-NNNNNN
+ * 예: PDS-PAY-260619-374821
+ *
+ * @param prefix 서비스별 접두어 (기본값 'PDS-PAY')
+ * @returns 생성된 주문 ID 문자열
+ */
+export function generateOrderId(prefix = 'PDS-PAY'): string {
+  return generateTid(prefix);
 }

@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import Stripe from 'stripe';
-import { randomBytes } from 'crypto';
+import { generateOrderId } from '../common/utils/id.util.js';
 import { PaymentMethod } from './entities/payment-method.entity.js';
 import {
   PaymentTransaction,
@@ -43,12 +43,6 @@ export class StripeService {
       this._stripe = new Stripe(key);
     }
     return this._stripe;
-  }
-
-  private generateOrderId(): string {
-    const ts = Date.now().toString(36);
-    const rand = randomBytes(4).toString('hex');
-    return `api_${ts}_${rand}`;
   }
 
   private normalizeCurrency(currency?: string): string {
@@ -128,7 +122,7 @@ export class StripeService {
     }
     const currency = this.normalizeCurrency(data.currency);
     const customerId = await this.ensureCustomer(user);
-    const orderId = this.generateOrderId();
+    const orderId = generateOrderId();
 
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount: data.amount,
@@ -192,7 +186,7 @@ export class StripeService {
       throw new BadRequestException('결제 금액이 유효하지 않습니다.');
     }
     const currency = this.normalizeCurrency(data.currency);
-    const orderId = this.generateOrderId();
+    const orderId = generateOrderId();
 
     const tx = this.txRepo.create({
       userId: user.id,
@@ -222,10 +216,12 @@ export class StripeService {
         confirm: true,
         description: data.goodName,
         metadata: { userId: user.id, orderId },
+        expand: ['latest_charge'],
       });
 
       tx.stripePaymentIntentId = paymentIntent.id;
       tx.rawResponse = { paymentIntent: paymentIntent as any };
+      tx.receiptUrl = this.extractReceiptUrl(paymentIntent) || tx.receiptUrl;
 
       if (paymentIntent.status === 'succeeded') {
         tx.status = PaymentTransactionStatus.PAID;
@@ -359,6 +355,15 @@ export class StripeService {
     tx.rawResponse = { ...(tx.rawResponse || {}), events: [...events, eventId] };
   }
 
+  // PaymentIntent의 latest_charge(확장된 경우)에서 영수증 URL 추출.
+  private extractReceiptUrl(pi: Stripe.PaymentIntent): string | null {
+    const charge = pi.latest_charge;
+    if (charge && typeof charge !== 'string') {
+      return charge.receipt_url || null;
+    }
+    return null;
+  }
+
   private async findTx(
     paymentIntentId?: string | null,
     orderId?: string,
@@ -389,6 +394,19 @@ export class StripeService {
 
     if (!tx.stripePaymentIntentId) tx.stripePaymentIntentId = pi.id;
     if (status === PaymentTransactionStatus.PAID) {
+      // 웹훅 PaymentIntent의 latest_charge는 id 문자열이라 charge를 조회해 영수증 URL 확보.
+      if (!tx.receiptUrl && pi.latest_charge) {
+        const chargeId =
+          typeof pi.latest_charge === 'string'
+            ? pi.latest_charge
+            : pi.latest_charge.id;
+        try {
+          const charge = await this.stripe.charges.retrieve(chargeId);
+          tx.receiptUrl = charge.receipt_url || null;
+        } catch (err: any) {
+          this.logger.warn(`[Stripe Webhook] charge retrieve 실패: ${err?.message}`);
+        }
+      }
       // 이미 환불/취소된 건은 덮어쓰지 않음
       if (
         tx.status === PaymentTransactionStatus.PENDING ||
