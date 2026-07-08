@@ -38,7 +38,12 @@ export default function PrivacyPage() {
             <div className="space-y-2">
               <p className="font-medium">필수항목</p>
               <ul className="list-disc pl-5 space-y-0.5">
-                <li>휴대폰 번호 (본인인증, 로그인 식별자)</li>
+                <li>이름</li>
+                <li>성별</li>
+                <li>생년월일</li>
+                <li>전화번호 (본인인증, 로그인 식별자)</li>
+                <li>이메일</li>
+                <li>주소</li>
                 <li>소셜 로그인 사용 시: 카카오/네이버/구글이 제공하는 식별자, 이메일, 닉네임</li>
               </ul>
               <p className="font-medium mt-2">자동 수집 항목</p>
