@@ -3,6 +3,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { CONFIG } from '@/lib/constants';
+import { isProfileComplete } from '@/lib/profile';
+
+// 가입 완료(필수정보 입력) 전이라도 접근을 허용하는 경로
+const PROFILE_GATE_ALLOWLIST = ['/register', '/login', '/terms', '/privacy'];
 
 interface User {
   id: string;
@@ -50,6 +54,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     window.addEventListener('auth:unauthorized', handleUnauthorized);
     return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
   }, [pathname, router]);
+
+  // 로그인은 됐지만 필수정보(가입 완료)가 없으면 가입 정보 입력 페이지로 강제 이동
+  useEffect(() => {
+    if (loading || !user || isProfileComplete(user)) return;
+    const allowed = PROFILE_GATE_ALLOWLIST.some(
+      (p) => pathname === p || pathname.startsWith(`${p}/`),
+    );
+    if (!allowed) {
+      router.replace(`/register?redirect=${encodeURIComponent(pathname)}`);
+    }
+  }, [user, loading, pathname, router]);
 
   const refresh = async () => {
     try {

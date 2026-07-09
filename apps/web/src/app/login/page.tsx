@@ -4,6 +4,8 @@ import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { CONFIG } from '@/lib/constants';
+import { isProfileComplete } from '@/lib/profile';
+import { resolvePostAuthDestination } from '@/lib/auth-redirect';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,10 +34,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
 
   const clientId = searchParams.get('client_id');
-  const redirectUri = searchParams.get('redirect_uri');
   const redirectPath = searchParams.get('redirect') || '/profile';
-  const scope = searchParams.get('scope') || 'openid profile';
-  const state = searchParams.get('state') || '';
 
   // 1. 클라이언트 정보(브랜딩) 가져오기
   useEffect(() => {
@@ -55,21 +54,26 @@ function LoginForm() {
 
   // 2. 로그인 성공 시 처리
   useEffect(() => {
-    if (!authLoading && user) {
-      if (clientId && redirectUri) {
-        // OIDC 흐름: 인증 코드를 받기 위해 API의 authorize 엔드포인트로 이동
-        const authUrl = new URL(`${API_BASE}/auth/authorize`);
-        authUrl.searchParams.set('client_id', clientId);
-        authUrl.searchParams.set('redirect_uri', redirectUri);
-        authUrl.searchParams.set('response_type', 'code');
-        authUrl.searchParams.set('scope', scope);
-        authUrl.searchParams.set('state', state);
-        window.location.href = authUrl.toString();
-      } else {
-        router.replace(redirectPath);
-      }
+    if (authLoading || !user) return;
+
+    // 필수정보(가입 완료) 미입력 시 가입 정보 입력 페이지로 유도 (OIDC 파라미터 보존)
+    if (!isProfileComplete(user)) {
+      const qs = searchParams.toString();
+      router.replace(qs ? `/register?${qs}` : '/register');
+      return;
     }
-  }, [user, authLoading, clientId, redirectUri, scope, state, router]);
+
+    const dest = resolvePostAuthDestination(
+      searchParams as unknown as URLSearchParams,
+      API_BASE,
+    );
+    if ('external' in dest) {
+      // OIDC 흐름: 인증 코드를 받기 위해 API의 authorize 엔드포인트로 이동
+      window.location.href = dest.external;
+    } else {
+      router.replace(dest.internal);
+    }
+  }, [user, authLoading, searchParams, router]);
 
   const handleRequestCode = async (e: React.FormEvent) => {
     e.preventDefault();
