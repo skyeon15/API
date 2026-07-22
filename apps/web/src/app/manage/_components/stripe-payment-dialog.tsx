@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { getStripe } from '@/lib/stripe';
+import { getStripe, stripeReturnUrl } from '@/lib/stripe';
 import { apiFetch } from '@/lib/api';
 import { CONFIG } from '@/lib/constants';
 import { Button } from '@/components/ui/button';
@@ -41,8 +41,10 @@ function ConfirmForm({ onPaid }: { onPaid: () => void }) {
     setSubmitting(true);
     setError('');
 
+    // 네이버페이 등 리다이렉트 수단은 return_url이 필수. 카드는 이탈 없이 인라인 완료.
     const { error: confirmError, paymentIntent } = await stripe.confirmPayment({
       elements,
+      confirmParams: { return_url: stripeReturnUrl(window.location.pathname) },
       redirect: 'if_required',
     });
 

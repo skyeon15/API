@@ -45,6 +45,12 @@ export class PaymentMethod extends BaseEntity {
   @Column({ type: 'varchar', nullable: true })
   customerId: string | null; // Stripe Customer id (cus_xxx)
 
+  @Column({ type: 'varchar', nullable: true })
+  pmType: string | null; // Stripe 결제수단 종류: 'card' | 'naver_pay' | 'kakao_pay' 등 (PayApp 미사용)
+
+  @Column({ type: 'jsonb', nullable: true })
+  pmDetail: Record<string, any> | null; // 수단별 상세(네이버페이 buyerId/funding, 카드 exp·funding, mandateId 등)
+
   @Column()
   billingKey: string; // PayApp: encBill / Stripe: PaymentMethod id (pm_xxx)
 

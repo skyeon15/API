@@ -25,6 +25,7 @@ import {
 
 import { StripeCardDialog } from './_components/stripe-card-dialog';
 import { StripePaymentDialog } from './_components/stripe-payment-dialog';
+import { StripeChargeDialog } from './_components/stripe-charge-dialog';
 
 import { CONFIG } from '@/lib/constants';
 const API_BASE = CONFIG.API_BASE;
@@ -43,8 +44,25 @@ interface Payment {
   cardNo: string;
   sellerId?: string | null;
   provider?: 'payapp' | 'stripe';
+  pmType?: string | null;
+  pmDetail?: Record<string, any> | null;
   memo?: string | null;
   createdAt?: string;
+}
+
+// 네이버페이 등 간편결제는 카드번호가 없어 Stripe가 주는 정보(결제원천·구매자 식별자)로 대체 표기
+function paymentSubLabel(pm: Payment): string {
+  if (!pm.pmType || pm.pmType === 'card') return pm.cardNo;
+  const funding =
+    pm.pmDetail?.funding === 'card'
+      ? '카드 결제'
+      : pm.pmDetail?.funding === 'points'
+        ? '포인트 결제'
+        : null;
+  const buyer = pm.pmDetail?.buyerId
+    ? `구매자 ${String(pm.pmDetail.buyerId).slice(0, 8)}…`
+    : null;
+  return [funding, buyer].filter(Boolean).join(' · ') || pm.cardNo;
 }
 
 interface Seller {
@@ -1264,7 +1282,7 @@ export default function ManagePage() {
                       </button>
                     )}
                     <p className="text-xs text-muted-foreground">
-                      {pm.cardNo}
+                      {paymentSubLabel(pm)}
                       {pm.provider !== 'stripe' && pm.sellerId && (
                         <span className="ml-2">
                           · 판매자 {sellers.find((s) => String(s.id) === String(pm.sellerId))?.sellerId ?? '-'}
@@ -1695,6 +1713,12 @@ export default function ManagePage() {
               </Dialog>
               <div className="pt-1">
                 <StripePaymentDialog onPaid={fetchData} />
+              </div>
+              <div className="pt-1">
+                <StripeChargeDialog
+                  cards={payments.filter((p) => p.provider === 'stripe')}
+                  onPaid={fetchData}
+                />
               </div>
             </div>
 

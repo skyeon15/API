@@ -16,6 +16,14 @@ import {
 } from './entities/payment-transaction.entity.js';
 import { User } from './entities/user.entity.js';
 
+// 카드가 아닌 저장 수단(간편결제)의 표시명
+const WALLET_LABELS: Record<string, string> = {
+  naver_pay: '네이버페이',
+  kakao_pay: '카카오페이',
+  payco: '페이코',
+  samsung_pay: '삼성페이',
+};
+
 /**
  * Stripe(MoR) 결제 서비스.
  * - 플랫폼 단일 키 사용(Connect 미사용). 모든 호출 동일 키.
@@ -108,6 +116,8 @@ export class StripeService {
     const setupIntent = await this.stripe.setupIntents.create({
       customer: customerId,
       usage: 'off_session',
+      // 결제수단은 대시보드 설정을 따름(카드/네이버페이 등). 네이버페이도 off_session 반복청구 지원.
+      // 리다이렉트 수단이 포함되므로 프론트 confirmSetup에는 return_url이 필수.
       metadata: { userId: user.id },
     });
     return {
@@ -464,6 +474,51 @@ export class StripeService {
     await this.txRepo.save(tx);
   }
 
+  // pmType/pmDetail이 비어있는 기존 행을 Stripe 조회로 채운다.
+  private async backfillPmDetail(pm: PaymentMethod): Promise<void> {
+    try {
+      const stripePm = await this.stripe.paymentMethods.retrieve(pm.billingKey);
+      pm.pmType = stripePm.type;
+      pm.pmDetail = {
+        ...(pm.pmDetail || {}),
+        ...(this.extractPmDetail(stripePm) || {}),
+      };
+      // 구버전이 남긴 기본 라벨('카드'/'****')을 실제 수단으로 교정
+      if (stripePm.card) {
+        if (pm.cardName === '카드') pm.cardName = stripePm.card.brand || pm.cardName;
+        if (pm.cardNo === '****') pm.cardNo = stripePm.card.last4 || pm.cardNo;
+      } else if (pm.cardName === '카드') {
+        pm.cardName = WALLET_LABELS[stripePm.type] || stripePm.type;
+      }
+      await this.paymentRepo.save(pm);
+    } catch (err: any) {
+      this.logger.warn(`[Stripe] pmDetail 백필 실패: ${err?.message}`);
+    }
+  }
+
+  // 수단별로 Stripe가 제공하는 식별 정보를 추출.
+  // 네이버페이는 카드번호/브랜드를 주지 않고 buyer_id(동일 계정 식별)와 funding만 준다.
+  private extractPmDetail(pm: Stripe.PaymentMethod): Record<string, any> | null {
+    if (pm.card) {
+      return {
+        brand: pm.card.brand,
+        last4: pm.card.last4,
+        funding: pm.card.funding,
+        country: pm.card.country,
+        expMonth: pm.card.exp_month,
+        expYear: pm.card.exp_year,
+      };
+    }
+    const wallet = (pm as any)[pm.type];
+    if (wallet && typeof wallet === 'object') {
+      return {
+        buyerId: wallet.buyer_id ?? undefined,
+        funding: wallet.funding ?? undefined,
+      };
+    }
+    return null;
+  }
+
   // SetupIntent 성공 → 저장 카드(PaymentMethod) 영속화.
   // 웹훅과 엔드포인트 양쪽에서 호출. 신규 저장 시 PaymentMethod 반환, 이미 있으면 null.
   private async persistSavedCard(
@@ -487,25 +542,42 @@ export class StripeService {
       provider: PaymentProvider.STRIPE,
       billingKey: pmId,
     });
-    if (exists) return null;
+    if (exists) {
+      // pmType 도입 이전/구버전 웹훅이 만든 행은 상세 정보와 라벨을 채워둔다
+      if (!exists.pmDetail) await this.backfillPmDetail(exists);
+      return null;
+    }
 
     let cardBrand = '카드';
     let last4 = '****';
+    let pmType: string | null = null;
+    let pmDetail: Record<string, any> | null = null;
     try {
       const pm = await this.stripe.paymentMethods.retrieve(pmId);
+      pmType = pm.type;
+      pmDetail = this.extractPmDetail(pm);
       if (pm.card) {
         cardBrand = pm.card.brand || cardBrand;
         last4 = pm.card.last4 || last4;
+      } else {
+        // 네이버페이 등 카드 정보가 없는 수단은 타입명을 라벨로 사용
+        cardBrand = WALLET_LABELS[pm.type] || pm.type || cardBrand;
       }
     } catch (err: any) {
       this.logger.warn(`[Stripe] pm retrieve 실패: ${err?.message}`);
     }
+
+    // 반복청구 근거(mandate)는 SetupIntent에만 있어 함께 보관
+    const mandateId = typeof si.mandate === 'string' ? si.mandate : si.mandate?.id;
+    if (mandateId) pmDetail = { ...(pmDetail || {}), mandateId };
 
     const payment = this.paymentRepo.create({
       userId,
       provider: PaymentProvider.STRIPE,
       cardNo: last4,
       cardName: cardBrand,
+      pmType,
+      pmDetail,
       merchantId: null,
       customerId,
       billingKey: pmId,
