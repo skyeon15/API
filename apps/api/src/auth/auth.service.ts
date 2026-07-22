@@ -21,6 +21,22 @@ import {
 import { OauthClient } from './entities/oauth-client.entity.js';
 import { OauthGrant, GrantStatus } from './entities/oauth-grant.entity.js';
 import { AlimtalkService } from '../alimtalk/alimtalk.service.js';
+import { AligoProvider } from '../alimtalk/aligo.provider.js';
+
+// PATCH /auth/me 로 본인이 직접 수정할 수 있는 필드.
+// ci·roles·status·metadata 등 권한/식별 관련 필드는 제외하고, phone은 별도 규칙으로 처리한다.
+const SELF_EDITABLE_PROFILE_FIELDS = [
+  'name',
+  'nickname',
+  'profileImageUrl',
+  'email',
+  'birthDate',
+  'gender',
+  'zipCode',
+  'address',
+  'detailAddress',
+  'company',
+] as const satisfies readonly (keyof User)[];
 
 @Injectable()
 export class AuthService {
@@ -39,6 +55,7 @@ export class AuthService {
     private readonly oauthGrantRepo: Repository<OauthGrant>,
     private readonly jwtService: JwtService,
     private readonly alimtalkService: AlimtalkService,
+    private readonly aligoProvider: AligoProvider,
     @Inject('REDIS_CLIENT')
     private readonly redis: Redis,
   ) {}
@@ -292,7 +309,26 @@ export class AuthService {
   // --- Profile & Grant Management ---
 
   async updateProfile(userId: string, data: Partial<User>) {
-    await this.userRepo.update(userId, data);
+    const patch: Partial<User> = {};
+    for (const field of SELF_EDITABLE_PROFILE_FIELDS) {
+      if (data[field] !== undefined) patch[field] = data[field] as any;
+    }
+
+    // 전화번호는 소셜에서 넘어오거나 본인인증(verifyPhone)으로만 등록된다.
+    // 현재 값과 동일한 값이 함께 전송되는 경우(가입 완료 폼)만 허용하고, 그 외 변경은 거부.
+    if (data.phone !== undefined) {
+      const phone = String(data.phone).replace(/-/g, '');
+      const current = await this.getUserById(userId);
+      if (current.phone !== phone) {
+        throw new BadRequestException(
+          '전화번호는 본인인증을 통해서만 변경할 수 있습니다.',
+        );
+      }
+    }
+
+    if (Object.keys(patch).length > 0) {
+      await this.userRepo.update(userId, patch);
+    }
     return this.getUserById(userId);
   }
 
@@ -465,8 +501,9 @@ export class AuthService {
     const channelId = process.env.API_VERIFY_CHANNEL_ID;
     const templateCode = process.env.API_VERIFY_TEMPLATE_CODE;
 
-    if (channelId && templateCode) {
-      try {
+    try {
+      if (channelId && templateCode) {
+        // 인증 전용 알림톡 템플릿이 설정된 경우 우선 사용한다.
         await this.alimtalkService.send(
           {
             channelId,
@@ -476,18 +513,28 @@ export class AuthService {
           },
           { ip: '127.0.0.1', userId: '00000000-0000-0000-0000-000000000000' },
         );
-      } catch (error) {
-        console.error('[AUTH] Failed to send Alimtalk:', error.message);
+      } else {
+        await this.aligoProvider.sendSms({
+          receiverPhone: phone,
+          message: `[파란대나무숲] 인증번호 ${code}를 입력해주세요. (5분 내 유효)`,
+        });
+      }
+    } catch (error) {
+      console.error('[AUTH] Failed to send verification code:', error.message);
+      // 운영에서는 발송 실패를 그대로 알리고, 개발 환경에서는 로그의 코드로 계속 진행할 수 있게 둔다.
+      if (
+        process.env.API_NODE_ENV === 'production' ||
+        process.env.NODE_ENV === 'production'
+      ) {
+        throw error;
       }
     }
 
     return { message: '인증번호가 발송되었습니다.' };
   }
 
-  async verifyCode(
-    phone: string,
-    code: string,
-  ): Promise<{ user: User; accessToken: string; refreshToken: string }> {
+  /** 발급된 인증번호를 검증하고 1회용으로 소모한다. */
+  private async consumeVerificationCode(phone: string, code: string) {
     const record = await this.codeRepo.findOne({
       where: { phone, code, expiresAt: MoreThan(new Date()) },
       order: { createdAt: 'DESC' },
@@ -499,6 +546,54 @@ export class AuthService {
       );
 
     await this.codeRepo.remove(record);
+  }
+
+  /**
+   * 등록하려는 전화번호가 유효한지(본인 계정에 등록 가능한지) 확인한다.
+   * 인증번호 발송 전과 인증 확인 시점에 모두 사용한다.
+   */
+  private async assertPhoneAssignable(userId: string, phone: string) {
+    const user = await this.getUserById(userId);
+    if (user.phone && user.phone !== phone) {
+      throw new BadRequestException('이미 인증된 전화번호가 있습니다.');
+    }
+
+    const owner = await this.userRepo.findOneBy({ phone });
+    if (owner && owner.id !== userId) {
+      throw new BadRequestException(
+        '이미 다른 계정에서 사용 중인 전화번호입니다.',
+      );
+    }
+
+    return user;
+  }
+
+  /** 로그인 상태에서 본인 전화번호 인증용 인증번호를 발송한다. */
+  async requestPhoneCode(userId: string, phone: string) {
+    await this.assertPhoneAssignable(userId, phone);
+    return this.requestCode(phone);
+  }
+
+  /**
+   * 로그인 상태에서 본인 전화번호를 인증해 등록한다.
+   * (소셜에서 전화번호가 넘어오지 않은 계정의 가입 완료용)
+   */
+  async verifyPhone(userId: string, phone: string, code: string) {
+    // 발송 시점 이후 다른 계정이 선점했을 수 있으므로 저장 직전에 한 번 더 확인한다.
+    const user = await this.assertPhoneAssignable(userId, phone);
+
+    await this.consumeVerificationCode(phone, code);
+
+    user.phone = phone;
+    await user.save();
+    return user;
+  }
+
+  async verifyCode(
+    phone: string,
+    code: string,
+  ): Promise<{ user: User; accessToken: string; refreshToken: string }> {
+    await this.consumeVerificationCode(phone, code);
 
     let user = await this.userRepo.findOneBy({ phone });
     if (!user) {

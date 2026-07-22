@@ -16,6 +16,8 @@ dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 
 const BASE_URL = 'https://kakaoapi.aligo.in/akv10';
+// 문자(SMS)는 알림톡과 다른 호스트/파라미터 규격을 사용한다.
+const SMS_URL = 'https://apis.aligo.in/send/';
 
 @Injectable()
 export class AligoProvider {
@@ -160,6 +162,48 @@ export class AligoProvider {
     }
 
     return this.post('/alimtalk/send/', payload);
+  }
+
+  /**
+   * 템플릿 없이 문자(SMS/LMS)로 발송합니다. 인증번호 등 즉시성 메시지에 사용합니다.
+   * 알림톡과 달리 apis.aligo.in 호스트와 key/user_id 파라미터명을 씁니다.
+   */
+  async sendSms(params: {
+    receiverPhone: string;
+    message: string;
+    title?: string;
+  }) {
+    const form = new URLSearchParams();
+    form.append('key', process.env.API_ALIGO_API_KEY ?? '');
+    form.append('user_id', process.env.API_ALIGO_USER_ID ?? '');
+    form.append('sender', process.env.API_ALIGO_SENDER || '07041383114');
+    form.append('receiver', params.receiverPhone.replace(/-/g, ''));
+    form.append('msg', params.message);
+    if (params.title) form.append('title', params.title);
+
+    let data: any;
+    try {
+      ({ data } = await axios.post(SMS_URL, form, {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      }));
+    } catch (error) {
+      this.logger.error(`Aligo SMS 통신 오류: ${error.message}`);
+      throw new InternalServerErrorException(
+        '문자 발송 중 오류가 발생했습니다.',
+      );
+    }
+
+    // 알리고 SMS는 result_code가 양수일 때 성공, 음수면 실패 사유가 message에 담긴다.
+    if (Number(data?.result_code) <= 0) {
+      this.logger.error(
+        `Aligo SMS 발송 실패 [${data?.result_code}]: ${data?.message}`,
+      );
+      throw new BadRequestException(
+        data?.message || '문자 발송에 실패했습니다.',
+      );
+    }
+
+    return data;
   }
 
   async cancel(mid: string) {

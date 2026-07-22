@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api';
 import { CONFIG } from '@/lib/constants';
 import { isProfileComplete } from '@/lib/profile';
 import { resolvePostAuthDestination } from '@/lib/auth-redirect';
+import { formatPhone } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,7 +17,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 const API_BASE = CONFIG.API_BASE;
 
 function RegisterForm() {
-  const { user, loading: authLoading, refresh } = useAuth();
+  const { user, loading: authLoading, refresh, logout } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -33,6 +34,13 @@ function RegisterForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // 전화번호 본인인증 (소셜에서 번호가 넘어오지 않은 계정만 필요)
+  const phoneVerified = Boolean(user?.phone);
+  const [codeSent, setCodeSent] = useState(false);
+  const [code, setCode] = useState('');
+  const [phoneLoading, setPhoneLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState('');
+
   // 미로그인 시 로그인으로, 이미 필수정보가 있으면 원래 목적지로 보낸다.
   useEffect(() => {
     if (authLoading) return;
@@ -44,17 +52,17 @@ function RegisterForm() {
       goToDestination();
       return;
     }
-    // 소셜/휴대폰 로그인에서 받아온 값 선채움
+    // 소셜/휴대폰 로그인에서 받아온 값 선채움 (사용자가 이미 입력한 값은 덮어쓰지 않는다)
     setForm((prev) => ({
       ...prev,
-      name: user.name || '',
-      email: user.email || '',
-      phone: user.phone || '',
-      birthDate: user.birthDate || '',
-      gender: user.gender || '',
-      zipCode: user.zipCode || '',
-      address: user.address || '',
-      detailAddress: user.detailAddress || '',
+      name: prev.name || user.name || '',
+      email: prev.email || user.email || '',
+      phone: user.phone || prev.phone,
+      birthDate: prev.birthDate || user.birthDate || '',
+      gender: prev.gender || user.gender || '',
+      zipCode: prev.zipCode || user.zipCode || '',
+      address: prev.address || user.address || '',
+      detailAddress: prev.detailAddress || user.detailAddress || '',
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
@@ -68,15 +76,79 @@ function RegisterForm() {
     }
   };
 
+  const handleLogout = async () => {
+    setLoading(true);
+    try {
+      await logout();
+      router.replace('/login');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRequestPhoneCode = async () => {
+    setPhoneError('');
+    if (!form.phone.trim()) {
+      setPhoneError('전화번호를 입력해주세요.');
+      return;
+    }
+    setPhoneLoading(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/request-phone-code`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: form.phone }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || '인증번호 발송에 실패했습니다.');
+      }
+      setCodeSent(true);
+    } catch (err: any) {
+      setPhoneError(err.message || '인증번호 발송에 실패했습니다.');
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
+  const handleVerifyPhone = async () => {
+    setPhoneError('');
+    setPhoneLoading(true);
+    try {
+      const res = await apiFetch(`${API_BASE}/auth/verify-phone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: form.phone, code }),
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || '인증에 실패했습니다.');
+      }
+      setCodeSent(false);
+      setCode('');
+      await refresh();
+    } catch (err: any) {
+      setPhoneError(err.message || '인증에 실패했습니다.');
+    } finally {
+      setPhoneLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!phoneVerified) {
+      setError('전화번호 본인인증을 완료해주세요.');
+      return;
+    }
 
     const missing =
       !form.name.trim() ||
       !form.gender ||
       !form.birthDate ||
-      !form.phone.trim() ||
       !form.email.trim() ||
       !form.address.trim();
     if (missing) {
@@ -131,16 +203,57 @@ function RegisterForm() {
                   required
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="phone">전화번호 *</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="010-1234-5678"
-                  value={form.phone}
-                  onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                  required
-                />
+                {phoneVerified ? (
+                  <>
+                    <Input id="phone" value={formatPhone(form.phone)} disabled readOnly />
+                    <p className="text-xs text-muted-foreground">
+                      본인인증으로 확인된 번호라 직접 수정할 수 없습니다.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      <Input
+                        id="phone"
+                        type="tel"
+                        placeholder="010-1234-5678"
+                        className="flex-1"
+                        value={form.phone}
+                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                        disabled={codeSent}
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={codeSent ? () => setCodeSent(false) : handleRequestPhoneCode}
+                        disabled={phoneLoading}
+                      >
+                        {codeSent ? '번호 변경' : phoneLoading ? '발송 중...' : '인증번호 받기'}
+                      </Button>
+                    </div>
+                    {codeSent && (
+                      <div className="flex gap-2">
+                        <Input
+                          id="code"
+                          type="text"
+                          placeholder="6자리 숫자"
+                          maxLength={6}
+                          className="flex-1 tracking-widest"
+                          value={code}
+                          onChange={(e) => setCode(e.target.value)}
+                        />
+                        <Button type="button" onClick={handleVerifyPhone} disabled={phoneLoading}>
+                          {phoneLoading ? '확인 중...' : '인증 확인'}
+                        </Button>
+                      </div>
+                    )}
+                    {phoneError && (
+                      <p className="text-xs text-destructive">{phoneError}</p>
+                    )}
+                  </>
+                )}
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">이메일 *</Label>
@@ -218,7 +331,16 @@ function RegisterForm() {
             </Button>
 
             <p className="text-xs text-center text-muted-foreground leading-relaxed">
-              입력하신 정보는{' '}
+              가입 완료 시{' '}
+              <a
+                href="/terms"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline hover:text-foreground"
+              >
+                이용약관
+              </a>
+              {' 및 '}
               <a
                 href="/privacy"
                 target="_blank"
@@ -227,9 +349,25 @@ function RegisterForm() {
               >
                 개인정보처리방침
               </a>
-              에 따라 처리됩니다.
+              에 동의하는 것으로 간주되며, 입력하신 정보는 해당 방침에 따라 처리됩니다.
             </p>
           </form>
+
+          {/* 다른 계정으로 로그인하려는 경우 탈출구 */}
+          <div className="mt-4 border-t pt-4 text-center">
+            <p className="text-xs text-muted-foreground">
+              다른 계정으로 로그인하시겠어요?
+            </p>
+            <Button
+              type="button"
+              variant="ghost"
+              className="mt-1 h-auto p-1 text-sm"
+              onClick={handleLogout}
+              disabled={loading}
+            >
+              로그아웃
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { formatPhone } from '@/lib/utils';
 
 const API_BASE = CONFIG.API_BASE;
 
@@ -194,6 +195,12 @@ export default function ProfilePage() {
                     <Label htmlFor="profileImageUrl">프로필 사진 URL</Label>
                     <Input id="profileImageUrl" type="url" placeholder="https://example.com/photo.jpg" value={profile.profileImageUrl} onChange={(e) => setProfile({ ...profile, profileImageUrl: e.target.value })} />
                   </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone">전화번호</Label>
+                  <Input id="phone" value={user.phone ? formatPhone(user.phone) : '-'} disabled readOnly />
+                  <p className="text-xs text-muted-foreground">본인인증으로 확인된 번호라 직접 수정할 수 없습니다.</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

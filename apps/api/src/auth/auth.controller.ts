@@ -383,6 +383,35 @@ export class AuthController {
     return this.authService.requestCode(phone.replace(/-/g, ''));
   }
 
+  /** 로그인 상태에서 본인 전화번호 인증번호 발송(중복 번호는 발송 전에 거른다) */
+  @Post('request-phone-code')
+  async requestPhoneCode(@Req() req: any, @Body('phone') phone: string) {
+    const token = req.cookies?.access_token;
+    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
+    const payload = this.jwtService.verify(token);
+    return this.authService.requestPhoneCode(
+      payload.sub,
+      phone.replace(/-/g, ''),
+    );
+  }
+
+  /** 로그인 상태에서 본인 전화번호 인증(소셜에서 번호가 넘어오지 않은 계정의 가입 완료용) */
+  @Post('verify-phone')
+  async verifyPhone(
+    @Req() req: any,
+    @Body('phone') phone: string,
+    @Body('code') code: string,
+  ) {
+    const token = req.cookies?.access_token;
+    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
+    const payload = this.jwtService.verify(token);
+    return this.authService.verifyPhone(
+      payload.sub,
+      phone.replace(/-/g, ''),
+      code,
+    );
+  }
+
   @Post('verify-code')
   async verifyCode(
     @Body('phone') phone: string,
