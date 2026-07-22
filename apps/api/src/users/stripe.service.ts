@@ -55,19 +55,28 @@ export class StripeService {
 
   // ── Stripe Customer 확보 (사용자당 1개 재사용) ──────────────────────────────
   private async ensureCustomer(user: User): Promise<string> {
+    if (user.stripeCustomerId) return user.stripeCustomerId;
+
+    // 레거시: stripeCustomerId 도입 전 저장 카드에만 customerId가 남아있는 경우 백필
     const existing = await this.paymentRepo.findOne({
       where: { userId: user.id, provider: PaymentProvider.STRIPE },
       order: { createdAt: 'DESC' },
     });
-    if (existing?.customerId) return existing.customerId;
+    let customerId = existing?.customerId;
 
-    const customer = await this.stripe.customers.create({
-      email: user.email || undefined,
-      name: user.name || undefined,
-      phone: user.phone || undefined,
-      metadata: { userId: user.id },
-    });
-    return customer.id;
+    if (!customerId) {
+      const customer = await this.stripe.customers.create({
+        email: user.email || undefined,
+        name: user.name || undefined,
+        phone: user.phone || undefined,
+        metadata: { userId: user.id },
+      });
+      customerId = customer.id;
+    }
+
+    user.stripeCustomerId = customerId;
+    await user.save();
+    return customerId;
   }
 
   // 프론트 confirmSetup 직후 호출 → SetupIntent로 즉시 카드 저장(웹훅은 백업).
@@ -115,6 +124,7 @@ export class StripeService {
       currency?: string;
       goodName: string;
       savePaymentMethod?: boolean;
+      externalOrderId?: string;
     },
   ) {
     if (!data.amount || data.amount <= 0) {
@@ -131,7 +141,13 @@ export class StripeService {
       description: data.goodName,
       automatic_payment_methods: { enabled: true },
       setup_future_usage: data.savePaymentMethod ? 'off_session' : undefined,
-      metadata: { userId: user.id, orderId },
+      metadata: {
+        userId: user.id,
+        orderId,
+        ...(data.externalOrderId
+          ? { externalOrderId: data.externalOrderId }
+          : {}),
+      },
     });
 
     const tx = this.txRepo.create({
@@ -140,6 +156,7 @@ export class StripeService {
       paymentMethodId: null,
       sellerId: null,
       orderId,
+      externalOrderId: data.externalOrderId || null,
       stripePaymentIntentId: paymentIntent.id,
       goodName: data.goodName,
       amount: data.amount,

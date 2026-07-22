@@ -10,6 +10,7 @@ import {
   NotFoundException,
   UseGuards,
   Req,
+  Query,
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -30,6 +31,7 @@ import {
   ApiExcludeEndpoint,
   ApiOkResponse,
   ApiCreatedResponse,
+  ApiQuery,
 } from '@nestjs/swagger';
 import { randomBytes } from 'crypto';
 import { PaymentService } from './payment.service.js';
@@ -282,9 +284,17 @@ export class ProfileController {
 
   @Get('payments/transactions')
   @ApiOperation({ summary: '내 결제 내역 조회' })
-  async getTransactions(@Req() req: any) {
+  @ApiQuery({
+    name: 'externalOrderId',
+    required: false,
+    description: '호출 서비스측 주문번호로 필터',
+  })
+  async getTransactions(
+    @Req() req: any,
+    @Query('externalOrderId') externalOrderId?: string,
+  ) {
     const userId = this.getUserId(req);
-    return this.paymentService.listTransactions(userId);
+    return this.paymentService.listTransactions(userId, externalOrderId);
   }
 
   @Post('payments/charge')

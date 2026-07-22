@@ -51,6 +51,10 @@ export class User extends BaseEntity {
   @Column({ nullable: true })
   zipCode: string;
 
+  // Stripe Customer id (cus_xxx) — 사용자당 1개 재사용
+  @Column({ type: 'varchar', nullable: true })
+  stripeCustomerId: string | null;
+
   @Column({ nullable: true })
   address: string;
 

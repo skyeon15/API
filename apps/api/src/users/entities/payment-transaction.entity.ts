@@ -61,6 +61,10 @@ export class PaymentTransaction extends BaseEntity {
   @Column({ type: 'varchar' })
   orderId: string; // 우리 측 주문번호 (PayApp: var1 / Stripe: metadata.orderId)
 
+  @Index()
+  @Column({ type: 'varchar', nullable: true })
+  externalOrderId: string | null; // 호출 서비스측 주문번호 (대사용)
+
   @Column({ type: 'varchar', nullable: true })
   mulNo: string | null; // 페이앱 결제요청번호
 

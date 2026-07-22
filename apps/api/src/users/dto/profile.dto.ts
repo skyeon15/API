@@ -217,6 +217,13 @@ export class CreateStripePaymentIntentDto {
     default: false,
   })
   savePaymentMethod?: boolean;
+
+  @ApiProperty({
+    description: '호출 서비스측 주문번호 (대사용, 거래 조회 필터 가능)',
+    required: false,
+    example: 'svc-order-20260723-001',
+  })
+  externalOrderId?: string;
 }
 
 export class ChargeStripeDto {

@@ -531,9 +531,9 @@ export class PaymentService {
     }
   }
 
-  async listTransactions(userId: string) {
+  async listTransactions(userId: string, externalOrderId?: string) {
     return this.txRepo.find({
-      where: { userId },
+      where: externalOrderId ? { userId, externalOrderId } : { userId },
       order: { createdAt: 'DESC' },
     });
   }
