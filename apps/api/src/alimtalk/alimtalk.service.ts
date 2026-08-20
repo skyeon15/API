@@ -22,10 +22,21 @@ import {
   ResultCheckDataDto,
 } from './dto/alimtalk-response.dto.js';
 import { AlimtalkSendDto } from './dto/alimtalk-send.dto.js';
+import { RedisService } from '../common/redis/redis.service.js';
+import { createHash } from 'node:crypto';
 
 @Injectable()
 export class AlimtalkService {
   private readonly logger = new Logger(AlimtalkService.name);
+
+  /**
+   * 동일 발송 요청을 중복으로 보지 않을 시간(초). 0이면 중복 차단 비활성.
+   * 호출측 이중 발사·재시도 폭주가 그대로 발송으로 이어지는 걸 막는다.
+   */
+  private readonly dedupTtlSec = (() => {
+    const parsed = parseInt(process.env.API_ALIMTALK_DEDUP_TTL_SEC ?? '60', 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 60;
+  })();
 
   constructor(
     @InjectRepository(AlimtalkChannel)
@@ -36,6 +47,7 @@ export class AlimtalkService {
     private readonly messageRepo: Repository<AlimtalkMessage>,
     private readonly aligo: AligoProvider,
     private readonly auditService: AuditService,
+    private readonly redis: RedisService,
   ) {}
 
   // ── 채널 ──────────────────────────────────────────────────────────────────
@@ -404,7 +416,12 @@ export class AlimtalkService {
     return template;
   }
 
-  async deleteTemplate(code: string, type: 'db' | 'kakao', channelId: string, ctx: AuditContext) {
+  async deleteTemplate(
+    code: string,
+    type: 'db' | 'kakao',
+    channelId: string,
+    ctx: AuditContext,
+  ) {
     const where: FindOptionsWhere<AlimtalkTemplate> = {
       code,
       isRemoved: false,
@@ -480,6 +497,14 @@ export class AlimtalkService {
     return text.replace(/#\{([^}]+)\}/g, (_, key) => vars[key] ?? '');
   }
 
+  /** 치환까지 끝난 실제 발송 내용 기준으로 중복 판별 키를 만든다. */
+  private buildDedupKey(payload: unknown): string {
+    const hash = createHash('sha256')
+      .update(JSON.stringify(payload))
+      .digest('hex');
+    return `alimtalk:dedup:${hash}`;
+  }
+
   async send(
     dto: AlimtalkSendDto,
     ctx: AuditContext,
@@ -520,7 +545,7 @@ export class AlimtalkService {
       const linkPc = btn.linkPc || btn.linkP || btn.link_pc;
       const subbedMo = linkMo ? this.replaceVars(linkMo, vars) : linkMo;
       const subbedPc = linkPc ? this.replaceVars(linkPc, vars) : linkPc;
-      
+
       return {
         ...btn,
         name: btn.name ? this.replaceVars(btn.name, vars) : btn.name,
@@ -538,6 +563,53 @@ export class AlimtalkService {
       : undefined;
     const isScheduled = scheduledDate && scheduledDate > new Date();
 
+    const receiverPhone = dto.receiverPhone.replace(/-/g, '');
+    const messageType = isScheduled
+      ? MessageType.SCHEDULED
+      : MessageType.IMMEDIATE;
+
+    // 중복 발송 차단: 알리고를 호출하기 "전에" 선점한다.
+    // (호출측 이중 발사가 100ms 간격으로 들어와도 뒤엣것은 여기서 걸린다)
+    const dedupKey = this.buildDedupKey({
+      channelId: dto.channelId,
+      templateCode: dto.templateCode,
+      receiverPhone,
+      content,
+      title: title ?? null,
+      subtitle: subtitle ?? null,
+      buttons: buttons ?? null,
+      scheduledAt: isScheduled ? scheduledDate!.toISOString() : null,
+    });
+    if (this.dedupTtlSec > 0) {
+      const acquired = await this.redis.setIfAbsent(
+        dedupKey,
+        JSON.stringify({ tid, state: 'pending' }),
+        this.dedupTtlSec,
+      );
+      if (!acquired) {
+        const cached = await this.redis.get(dedupKey);
+        const prev = cached ? JSON.parse(cached) : null;
+        this.logger.warn(
+          `중복 발송 요청을 차단했어요 (tid=${tid}, 직전 tid=${prev?.tid ?? '?'}, ` +
+            `${receiverPhone}/${dto.templateCode})`,
+        );
+        return {
+          tid,
+          status: 'success',
+          message: `직전 ${this.dedupTtlSec}초 안에 동일한 발송 요청이 있어 실제 발송은 생략했어요.`,
+          data: {
+            messageId: prev?.messageId ?? null,
+            receiverPhone,
+            content,
+            type: messageType,
+            scheduledAt: isScheduled ? scheduledDate! : null,
+            sentAt: prev?.sentAt ? new Date(prev.sentAt) : null,
+            duplicated: true,
+          },
+        };
+      }
+    }
+
     let aligoResult: any;
     try {
       aligoResult = await this.aligo.send({
@@ -550,29 +622,75 @@ export class AlimtalkService {
         buttons,
         scheduledAt: isScheduled ? scheduledDate : undefined,
       });
+    } catch (error) {
+      // 발송 자체가 실패했으니 정당한 재시도까지 막지 않도록 선점을 푼다.
+      await this.redis.del(dedupKey);
 
-      const msgEntity = this.messageRepo.create({
-        transactionId: tid,
-        providerMessageId: aligoResult.info?.mid ?? null,
-        channelId: dto.channelId,
-        templateCode: dto.templateCode,
-        receiverPhone: dto.receiverPhone.replace(/-/g, ''),
-        content,
-        title: title ?? null,
-        subtitle: subtitle ?? null,
-        tplExtra: tplExtra ?? null,
-        tplAdvert: tplAdvert ?? null,
-        buttons: buttons ?? null,
-        type: isScheduled ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
-        scheduledAt: isScheduled ? scheduledDate : null,
-        sentAt: isScheduled ? null : new Date(),
-        apiResponse: aligoResult.message ?? null,
-        resultCode: null,
-        resultMessage: null,
-        isCompleted: false,
-        sentByUserId: ctx.userId ?? null,
-      });
-      const message = await this.messageRepo.save(msgEntity);
+      // 실패 기록은 best-effort — 여기서 또 터져도 원래 발송 에러를 그대로 올린다.
+      try {
+        await this.messageRepo.save(
+          this.messageRepo.create({
+            transactionId: tid,
+            channelId: dto.channelId,
+            templateCode: dto.templateCode,
+            receiverPhone,
+            content,
+            title: title ?? null,
+            subtitle: subtitle ?? null,
+            tplExtra: tplExtra ?? null,
+            tplAdvert: tplAdvert ?? null,
+            buttons: buttons ?? null,
+            type: messageType,
+            scheduledAt:
+              scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())
+                ? scheduledDate
+                : null,
+            sentAt: null,
+            apiResponse: error.message ?? null,
+            resultCode: 'FAILURE',
+            resultMessage: error.message ?? 'Unknown error',
+            isCompleted: true,
+            sentByUserId: ctx.userId ?? null,
+          }),
+        );
+      } catch (saveError) {
+        this.logger.error(
+          `발송 실패 기록 저장에도 실패했어요 (tid=${tid}): ${saveError.message}`,
+        );
+      }
+      throw error;
+    }
+
+    // ── 여기부터는 알리고에 이미 발송된 상태다. ──
+    // 기록 저장이 실패했다고 500을 던지면 호출측 재시도 → 중복 발송으로 번지므로
+    // 에러는 로그로만 남기고 발송 성공 응답을 돌려준다.
+    const sentAt = isScheduled ? null : new Date();
+    let messageId: string | null = null;
+    try {
+      const message = await this.messageRepo.save(
+        this.messageRepo.create({
+          transactionId: tid,
+          providerMessageId: aligoResult.info?.mid ?? null,
+          channelId: dto.channelId,
+          templateCode: dto.templateCode,
+          receiverPhone,
+          content,
+          title: title ?? null,
+          subtitle: subtitle ?? null,
+          tplExtra: tplExtra ?? null,
+          tplAdvert: tplAdvert ?? null,
+          buttons: buttons ?? null,
+          type: messageType,
+          scheduledAt: isScheduled ? scheduledDate! : null,
+          sentAt,
+          apiResponse: aligoResult.message ?? null,
+          resultCode: null,
+          resultMessage: null,
+          isCompleted: false,
+          sentByUserId: ctx.userId ?? null,
+        }),
+      );
+      messageId = message.id;
 
       await this.auditService.log({
         ...ctx,
@@ -581,50 +699,39 @@ export class AlimtalkService {
         resourceId: message.id,
         after: message,
       });
-
-      return {
-        tid,
-        status: 'success',
-        message: isScheduled
-          ? '예약 발송이 등록되었습니다.'
-          : '알림톡 발송 요청이 완료되었습니다.',
-        data: {
-          messageId: message.id,
-          receiverPhone: message.receiverPhone,
-          content: message.content,
-          type: message.type,
-          scheduledAt: message.scheduledAt,
-          sentAt: message.sentAt,
-        },
-      };
-    } catch (error) {
-      // 발송 요청 실패 시 DB에 실패 기록 시도
-      const msgEntity = this.messageRepo.create({
-        transactionId: tid,
-        channelId: dto.channelId,
-        templateCode: dto.templateCode,
-        receiverPhone: dto.receiverPhone.replace(/-/g, ''),
-        content,
-        title: title ?? null,
-        subtitle: subtitle ?? null,
-        tplExtra: tplExtra ?? null,
-        tplAdvert: tplAdvert ?? null,
-        buttons: buttons ?? null,
-        type: isScheduled ? MessageType.SCHEDULED : MessageType.IMMEDIATE,
-        scheduledAt:
-          scheduledDate instanceof Date && !isNaN(scheduledDate.getTime())
-            ? scheduledDate
-            : null,
-        sentAt: null,
-        apiResponse: error.message ?? null,
-        resultCode: 'FAILURE',
-        resultMessage: error.message ?? 'Unknown error',
-        isCompleted: true,
-        sentByUserId: ctx.userId ?? null,
-      });
-      await this.messageRepo.save(msgEntity);
-      throw error;
+    } catch (saveError) {
+      this.logger.error(
+        `알림톡은 발송됐지만 기록 저장에 실패했어요 ` +
+          `(tid=${tid}, mid=${aligoResult.info?.mid ?? '?'}, ${receiverPhone}): ${saveError.message}`,
+      );
     }
+
+    const data = {
+      messageId,
+      receiverPhone,
+      content,
+      type: messageType,
+      scheduledAt: isScheduled ? scheduledDate! : null,
+      sentAt,
+    };
+
+    // 중복 차단 창 안에 다시 들어오는 요청이 같은 결과를 받도록 결과를 채워 넣는다.
+    if (this.dedupTtlSec > 0) {
+      await this.redis.set(
+        dedupKey,
+        JSON.stringify({ tid, state: 'sent', ...data }),
+        this.dedupTtlSec,
+      );
+    }
+
+    return {
+      tid,
+      status: 'success',
+      message: isScheduled
+        ? '예약 발송이 등록되었습니다.'
+        : '알림톡 발송 요청이 완료되었습니다.',
+      data,
+    };
   }
 
   async cancel(id: string, ctx: AuditContext) {
@@ -700,14 +807,15 @@ export class AlimtalkService {
     const pendingItems = items.filter(
       (item) =>
         // !item.isCompleted && // 임시로 이미 완료된 항목도 매번 확인하도록 제거
-        item.providerMessageId &&
-        item.createdAt >= threeDaysAgo,
+        item.providerMessageId && item.createdAt >= threeDaysAgo,
     );
 
     if (pendingItems.length > 0) {
       // API 과부하 방지를 위해 최대 20개까지만 동기화 (한 페이지 분량)
       const syncTargets = pendingItems.slice(0, 20);
-      await Promise.all(syncTargets.map((item) => this.syncMessageResult(item)));
+      await Promise.all(
+        syncTargets.map((item) => this.syncMessageResult(item)),
+      );
     }
 
     return { items, total, page, limit };

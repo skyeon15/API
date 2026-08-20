@@ -25,10 +25,12 @@ export class GeneralResponseDto<T> {
  */
 export class SendResultDataDto {
   @ApiProperty({
-    description: '메시지 ID',
+    description:
+      '메시지 ID (발송은 성공했으나 기록 저장이 지연·실패한 경우 null)',
     example: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+    nullable: true,
   })
-  messageId: string;
+  messageId: string | null;
 
   @ApiProperty({ description: '수신자 전화번호', example: '01012345678' })
   receiverPhone: string;
@@ -52,6 +54,14 @@ export class SendResultDataDto {
     required: false,
   })
   sentAt?: Date | null;
+
+  @ApiProperty({
+    description:
+      '직전 동일 요청과 중복이라 실제 발송을 생략했는지 여부 (중복 차단 창 안에서만 true)',
+    example: false,
+    required: false,
+  })
+  duplicated?: boolean;
 }
 
 /**

@@ -8,6 +8,7 @@ export class RedisService implements OnModuleDestroy {
 
   // In-memory fallbacks
   private readonly memoryStore = new Map<string, string>();
+  private readonly memoryExpiry = new Map<string, number>();
   private readonly hashStore = new Map<string, Map<string, string>>();
 
   constructor(
@@ -81,8 +82,38 @@ export class RedisService implements OnModuleDestroy {
     return 'OK';
   }
 
+  /**
+   * 키가 없을 때만 선점한다(SET NX EX). 중복 요청 차단용.
+   * @returns 선점에 성공하면 true, 이미 누군가 선점 중이면 false
+   */
+  async setIfAbsent(
+    key: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<boolean> {
+    try {
+      if (this.isConnected) {
+        const res = await this.client.set(key, value, 'EX', ttlSeconds, 'NX');
+        return res === 'OK';
+      }
+    } catch (e) {
+      this.logger.warn(
+        `Redis setIfAbsent failed for key "${key}", falling back to memory.`,
+      );
+    }
+
+    // 인메모리 폴백(단일 인스턴스 한정)
+    const now = Date.now();
+    const expiresAt = this.memoryExpiry.get(key);
+    if (expiresAt && expiresAt > now) return false;
+    this.memoryStore.set(key, value);
+    this.memoryExpiry.set(key, now + ttlSeconds * 1000);
+    return true;
+  }
+
   async del(key: string): Promise<number> {
     this.memoryStore.delete(key);
+    this.memoryExpiry.delete(key);
     try {
       if (this.isConnected) {
         return await this.client.del(key);
