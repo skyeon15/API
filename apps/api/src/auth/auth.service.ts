@@ -135,8 +135,10 @@ export class AuthService {
       iss: 'https://gaon.bbforest.net', // 내 인증 서버 주소
       sub: user.id,
       aud: clientId,
-      iat: Math.floor(Date.now() / 1000),
-      exp: Math.floor(Date.now() / 1000) + 3600,
+      // 🔴 iat·exp 를 여기서 넣지 않는다. JwtModule 이 signOptions.expiresIn 을 붙이는데
+      //    payload 에 exp 가 이미 있으면 jsonwebtoken 이 던진다
+      //    (Bad "options.expiresIn" option the payload already has an "exp" property).
+      //    그래서 /auth/token 이 늘 500 이었다 — 아래 sign 옵션으로 수명을 준다.
     };
 
     const scopes = scope.split(' ');
@@ -155,7 +157,8 @@ export class AuthService {
       };
     }
 
-    return this.jwtService.sign(payload);
+    // id_token 은 1시간. issueAccessToken(15분)과 따로 정한다.
+    return this.jwtService.sign(payload, { expiresIn: '1h' });
   }
 
   private async updateGrant(userId: string, clientId: string, scope: string) {
