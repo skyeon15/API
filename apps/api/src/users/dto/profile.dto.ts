@@ -309,3 +309,17 @@ export class SuccessResponseDto {
   @ApiProperty({ description: '성공 여부', example: true })
   success: boolean;
 }
+
+export class StripeConfigResponseDto {
+  @ApiProperty({
+    description: '브라우저에서 Stripe.js 를 초기화할 때 쓰는 publishable 키',
+    example: 'pk_live_51ABCdef...',
+  })
+  publishableKey: string;
+
+  @ApiProperty({
+    description: '실 결제 키인지 여부. pk_live_ 로 시작하면 true, 테스트 키면 false',
+    example: true,
+  })
+  livemode: boolean;
+}

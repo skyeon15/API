@@ -8,6 +8,7 @@ import { PaymentTransaction } from './entities/payment-transaction.entity.js';
 import { CashReceipt } from './entities/cash-receipt.entity.js';
 import { VerificationCode } from './entities/verification-code.entity.js';
 import { ProfileController } from './profile.controller.js';
+import { StripeConfigController } from './stripe-config.controller.js';
 import { PayappWebhookController } from './payapp-webhook.controller.js';
 import { StripeWebhookController } from './stripe-webhook.controller.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
@@ -33,6 +34,7 @@ import { StripeService } from './stripe.service.js';
     ProfileController,
     PayappWebhookController,
     StripeWebhookController,
+    StripeConfigController,
   ],
   providers: [PaymentService, StripeService],
   exports: [TypeOrmModule, PaymentService, StripeService],
