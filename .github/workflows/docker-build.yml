@@ -39,7 +39,7 @@ jobs:
 
       # 단일 이미지에 web이 포함되므로 NEXT_PUBLIC_* 시크릿을 빌드 시점에 주입한다.
       - name: Fetch NEXT_PUBLIC_* secrets from Doppler
-        uses: dopplerhq/secrets-fetch-action@v2
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
         id: doppler
         with:
           doppler-token: ${{ secrets.DOPPLER_TOKEN_PRD }}
