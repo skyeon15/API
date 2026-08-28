@@ -107,6 +107,10 @@ async function bootstrap() {
       'api-key',
     );
   SERVICE_REGISTRY.forEach(({ label }) => builder.addTag(label));
+  builder.addTag(
+    '통합 로그인(SSO)',
+    '다른 서비스가 파란대나무숲 계정으로 로그인(OAuth2 authorization code)하기 위한 엔드포인트예요. 클라이언트 등록은 관리자에게 문의하세요.',
+  );
   const config = builder.build();
   const document = SwaggerModule.createDocument(app, config);
 

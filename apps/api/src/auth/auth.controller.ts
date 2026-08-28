@@ -12,12 +12,27 @@ import {
   Patch,
   Delete,
 } from '@nestjs/common';
-import { ApiExcludeController } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiExcludeEndpoint,
+  ApiOkResponse,
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service.js';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { OauthClient } from './entities/oauth-client.entity.js';
+import {
+  SsoClientInfoResponseDto,
+  SsoTokenRequestDto,
+  SsoTokenResponseDto,
+  SsoUserinfoResponseDto,
+} from './dto/sso.dto.js';
 import { SocialProvider } from './entities/user-social-account.entity.js';
 import { CONFIG } from '../common/constants.js';
 import { resolveApiBaseUrl } from '../common/utils/request-url.util.js';
@@ -32,7 +47,9 @@ const COOKIE_OPTIONS = {
 };
 
 
-@ApiExcludeController()
+// SSO(OAuth2) 엔드포인트 4개만 문서에 노출한다.
+// 플랫폼 자체 로그인(소셜/전화 인증·세션 관리)은 @ApiExcludeEndpoint로 제외.
+@ApiTags('통합 로그인(SSO)')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -45,6 +62,33 @@ export class AuthController {
   // --- OIDC Standard Endpoints ---
 
   @Get('authorize')
+  @ApiOperation({
+    summary: 'SSO 로그인 시작 (인가 코드 발급)',
+    description:
+      '사용자 브라우저를 이 주소로 리다이렉트하세요. 플랫폼 미로그인 상태면 로그인 페이지를 거친 뒤, ' +
+      '`redirect_uri?code=...&state=...`로 복귀합니다. 코드는 5분 만료·1회용입니다. ' +
+      '`state`는 그대로 되돌려주므로 CSRF 방지 검증은 호출 서비스 책임입니다.',
+  })
+  @ApiQuery({ name: 'client_id', description: '발급받은 클라이언트 ID' })
+  @ApiQuery({
+    name: 'redirect_uri',
+    description: '사전 등록된 콜백 URL (미등록 시 거부)',
+  })
+  @ApiQuery({
+    name: 'response_type',
+    description: '고정값 code',
+    enum: ['code'],
+  })
+  @ApiQuery({
+    name: 'scope',
+    description: '공백 구분 scope 목록 (openid profile email phone address)',
+    example: 'openid profile email',
+  })
+  @ApiQuery({ name: 'state', description: 'CSRF 방지용 임의 값 (그대로 반환)' })
+  @ApiResponse({
+    status: 302,
+    description: '로그인 페이지 또는 redirect_uri(code, state 포함)로 리다이렉트',
+  })
   async authorize(
     @Query('client_id') clientId: string,
     @Query('redirect_uri') redirectUri: string,
@@ -57,7 +101,20 @@ export class AuthController {
     if (responseType !== 'code')
       throw new BadRequestException('Unsupported response type');
 
-    const userId = req.cookies?.user_id;
+    // 🔴 세션은 access_token 쿠키가 들고 있다. 이 파일의 다른 12개 엔드포인트가 전부
+    //    그렇게 읽는데 여기만 존재하지 않는 `user_id` 쿠키를 보고 있었다 —
+    //    아무도 굽지 않는 쿠키라 authorize 가 «항상 미로그인»으로 판정했고,
+    //    /login 은 이미 로그인된 것을 보고 authorize 로 되돌려 보내서
+    //    무한 리다이렉트가 났다(2026-08-29, SSO 첫 연동에서 드러남).
+    let userId: string | null = null;
+    const sessionToken = req.cookies?.access_token;
+    if (sessionToken) {
+      try {
+        userId = this.jwtService.verify(sessionToken).sub;
+      } catch {
+        // 만료·위조된 토큰은 미로그인과 같이 다룬다 → 아래에서 로그인 화면으로 보낸다
+      }
+    }
 
     if (!userId) {
       const loginUrl = new URL(`${CONFIG.WEB_URL}/login`);
@@ -78,6 +135,15 @@ export class AuthController {
   }
 
   @Post('token')
+  @ApiOperation({
+    summary: 'SSO 토큰 교환 (인가 코드 → 토큰)',
+    description:
+      '`client_secret`이 필요하므로 반드시 서비스 백엔드에서 호출하세요. ' +
+      '응답 키는 OAuth2 표준(access_token)이 아닌 camelCase(accessToken)이므로 ' +
+      '기성 OAuth 클라이언트 라이브러리 대신 직접 HTTP 호출로 연동해야 합니다.',
+  })
+  @ApiBody({ type: SsoTokenRequestDto })
+  @ApiOkResponse({ type: SsoTokenResponseDto })
   async token(
     @Body('grant_type') grantType: string,
     @Body('code') code: string,
@@ -87,10 +153,22 @@ export class AuthController {
   ) {
     if (grantType !== 'authorization_code')
       throw new BadRequestException('Unsupported grant type');
-    return this.authService.exchangeCode(code, clientId, clientSecret);
+    return this.authService.exchangeCode(
+      code,
+      clientId,
+      clientSecret,
+      redirectUri,
+    );
   }
 
   @Get('userinfo')
+  @ApiOperation({
+    summary: 'SSO 사용자 정보 조회',
+    description:
+      '토큰 교환으로 받은 accessToken을 `Authorization: Bearer {accessToken}` 헤더로 전달하세요. ' +
+      '(API 키가 아닌 SSO 액세스 토큰입니다)',
+  })
+  @ApiOkResponse({ type: SsoUserinfoResponseDto })
   async userinfo(@Req() req: any) {
     const authHeader = req.headers.authorization;
     if (!authHeader) throw new UnauthorizedException('Missing access token');
@@ -112,6 +190,12 @@ export class AuthController {
   }
 
   @Get('client/:clientId')
+  @ApiOperation({
+    summary: 'SSO 클라이언트 공개 정보 조회',
+    description: '로그인 화면 브랜딩(로고·색상·테마)과 허용 scope를 조회합니다.',
+  })
+  @ApiParam({ name: 'clientId', description: '클라이언트 ID' })
+  @ApiOkResponse({ type: SsoClientInfoResponseDto })
   async getClientInfo(@Param('clientId') clientId: string) {
     const client = await this.oauthClientRepo.findOne({
       where: { clientId },
@@ -130,6 +214,7 @@ export class AuthController {
 
   // --- Profile & Grant Management ---
 
+  @ApiExcludeEndpoint()
   @Get('me')
   async getMe(@Req() req: any) {
     const token = req.cookies?.access_token;
@@ -138,6 +223,7 @@ export class AuthController {
     return this.authService.getUserById(payload.sub);
   }
 
+  @ApiExcludeEndpoint()
   @Patch('me')
   async updateMe(@Req() req: any, @Body() data: any) {
     const token = req.cookies?.access_token;
@@ -146,6 +232,7 @@ export class AuthController {
     return this.authService.updateProfile(payload.sub, data);
   }
 
+  @ApiExcludeEndpoint()
   @Get('social')
   async getSocialAccounts(@Req() req: any) {
     const token = req.cookies?.access_token;
@@ -154,6 +241,7 @@ export class AuthController {
     return this.authService.getSocialAccounts(payload.sub);
   }
 
+  @ApiExcludeEndpoint()
   @Delete('social/:provider')
   async unlinkSocial(@Req() req: any, @Param('provider') provider: any) {
     const token = req.cookies?.access_token;
@@ -162,6 +250,7 @@ export class AuthController {
     return this.authService.unlinkSocialAccount(payload.sub, provider);
   }
 
+  @ApiExcludeEndpoint()
   @Get('grants')
   async getGrants(@Req() req: any) {
     const token = req.cookies?.access_token;
@@ -170,6 +259,7 @@ export class AuthController {
     return this.authService.getGrants(payload.sub);
   }
 
+  @ApiExcludeEndpoint()
   @Delete('grants/:clientId')
   async revokeGrant(@Req() req: any, @Param('clientId') clientId: string) {
     const token = req.cookies?.access_token;
@@ -192,6 +282,7 @@ export class AuthController {
   }
 
 
+  @ApiExcludeEndpoint()
   @Get('kakao')
   async kakaoLogin(
     @Res() res: any,
@@ -206,6 +297,7 @@ export class AuthController {
     return res.redirect(kakaoAuthUrl);
   }
 
+  @ApiExcludeEndpoint()
   @Get('kakao/callback')
   async kakaoCallback(
     @Query('code') code: string,
@@ -253,6 +345,7 @@ export class AuthController {
     return res.redirect(finalRedirect || `${CONFIG.WEB_URL}/profile`);
   }
 
+  @ApiExcludeEndpoint()
   @Get('naver')
   async naverLogin(
     @Res() res: any,
@@ -268,6 +361,7 @@ export class AuthController {
     return res.redirect(naverAuthUrl);
   }
 
+  @ApiExcludeEndpoint()
   @Get('naver/callback')
   async naverCallback(
     @Query('code') code: string,
@@ -313,6 +407,7 @@ export class AuthController {
     return res.redirect(finalRedirect || `${CONFIG.WEB_URL}/profile`);
   }
 
+  @ApiExcludeEndpoint()
   @Get('google')
   async googleLogin(
     @Res() res: any,
@@ -329,6 +424,7 @@ export class AuthController {
     return res.redirect(googleAuthUrl);
   }
 
+  @ApiExcludeEndpoint()
   @Get('google/callback')
   async googleCallback(
     @Query('code') code: string,
@@ -378,12 +474,14 @@ export class AuthController {
 
   // --- Existing Phone Auth Endpoints ---
 
+  @ApiExcludeEndpoint()
   @Post('request-code')
   requestCode(@Body('phone') phone: string) {
     return this.authService.requestCode(phone.replace(/-/g, ''));
   }
 
   /** 로그인 상태에서 본인 전화번호 인증번호 발송(중복 번호는 발송 전에 거른다) */
+  @ApiExcludeEndpoint()
   @Post('request-phone-code')
   async requestPhoneCode(@Req() req: any, @Body('phone') phone: string) {
     const token = req.cookies?.access_token;
@@ -396,6 +494,7 @@ export class AuthController {
   }
 
   /** 로그인 상태에서 본인 전화번호 인증(소셜에서 번호가 넘어오지 않은 계정의 가입 완료용) */
+  @ApiExcludeEndpoint()
   @Post('verify-phone')
   async verifyPhone(
     @Req() req: any,
@@ -412,6 +511,7 @@ export class AuthController {
     );
   }
 
+  @ApiExcludeEndpoint()
   @Post('verify-code')
   async verifyCode(
     @Body('phone') phone: string,
@@ -433,6 +533,7 @@ export class AuthController {
     return user;
   }
 
+  @ApiExcludeEndpoint()
   @Post('refresh')
   async refresh(@Req() req: any, @Res({ passthrough: true }) res: any) {
     const token = req.cookies?.refresh_token;
@@ -452,6 +553,7 @@ export class AuthController {
     return { message: '토큰이 갱신되었습니다.' };
   }
 
+  @ApiExcludeEndpoint()
   @Post('logout')
   async logout(@Req() req: any, @Res({ passthrough: true }) res: any) {
     const token = req.cookies?.refresh_token;

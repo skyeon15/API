@@ -3,8 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
+import { SsoAdminController } from './sso-admin.controller.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { User } from '../users/entities/user.entity.js';
+import { ApiKey } from '../admin/entities/api-key.entity.js';
 import { VerificationCode } from '../users/entities/verification-code.entity.js';
 import { RefreshToken } from './entities/refresh-token.entity.js';
 import { UserSocialAccount } from './entities/user-social-account.entity.js';
@@ -21,6 +23,7 @@ import { AlimtalkModule } from '../alimtalk/alimtalk.module.js';
       UserSocialAccount,
       OauthClient,
       OauthGrant,
+      ApiKey, // ApiKeyOrSessionGuard(SSO 관리 API)용
     ]),
     JwtModule.registerAsync({
       useFactory: () => ({
@@ -31,7 +34,7 @@ import { AlimtalkModule } from '../alimtalk/alimtalk.module.js';
     AlimtalkModule,
   ],
   providers: [AuthService, JwtAuthGuard],
-  controllers: [AuthController],
+  controllers: [AuthController, SsoAdminController],
   exports: [AuthService, JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}

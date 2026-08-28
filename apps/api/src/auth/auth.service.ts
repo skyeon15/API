@@ -91,7 +91,12 @@ export class AuthService {
     return code;
   }
 
-  async exchangeCode(code: string, clientId: string, clientSecret: string) {
+  async exchangeCode(
+    code: string,
+    clientId: string,
+    clientSecret: string,
+    redirectUri: string,
+  ) {
     const client = await this.oauthClientRepo.findOneBy({
       clientId,
       clientSecret,
@@ -106,6 +111,10 @@ export class AuthService {
     const codeData = JSON.parse(codeDataStr);
     if (codeData.clientId !== clientId) {
       throw new BadRequestException('발급된 클라이언트와 일치하지 않습니다.');
+    }
+    // RFC 6749 4.1.3: 인가 요청에 쓴 redirect_uri와 일치해야 code 탈취를 막을 수 있다
+    if (codeData.redirectUri !== redirectUri) {
+      throw new BadRequestException('리다이렉트 주소가 일치하지 않습니다.');
     }
 
     await this.redis.del(`auth_code:${code}`);

@@ -26,6 +26,7 @@ import {
 import { StripeCardDialog } from './_components/stripe-card-dialog';
 import { StripePaymentDialog } from './_components/stripe-payment-dialog';
 import { StripeChargeDialog } from './_components/stripe-charge-dialog';
+import { SsoClientsSection } from './_components/sso-clients-section';
 
 import { CONFIG } from '@/lib/constants';
 const API_BASE = CONFIG.API_BASE;
@@ -1971,6 +1972,9 @@ export default function ManagePage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* SSO 클라이언트 관리 (관리자 전용) */}
+        {user.roles?.includes('ADMIN') && <SsoClientsSection />}
       </main>
     </div>
   );
