@@ -25,17 +25,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
+import { SCOPE_OPTIONS, scopeLabel } from '@/lib/sso-scopes';
 
 const API_BASE = CONFIG.API_BASE;
 
-// SSO에서 지원하는 scope 목록 (openid는 필수라 토글 불가)
-const SCOPE_OPTIONS = [
-  { value: 'openid', label: 'openid', required: true },
-  { value: 'profile', label: 'profile', required: false },
-  { value: 'email', label: 'email', required: false },
-  { value: 'phone', label: 'phone', required: false },
-  { value: 'address', label: 'address', required: false },
-];
+// SSO에서 지원하는 scope 목록. 라벨은 @/lib/sso-scopes 한 곳에서 온다
+// (연결된 서비스 화면과 같은 말을 써야 한다). openid는 필수라 토글 불가.
 
 interface SsoClient {
   id: string;
@@ -345,7 +340,7 @@ export function SsoClientsSection() {
                 <div className="flex flex-wrap gap-2">
                   {(client.allowedScopes ?? []).filter(Boolean).map((scope) => (
                     <Badge key={scope} variant="default">
-                      {scope}
+                      {scopeLabel(scope)}
                     </Badge>
                   ))}
                 </div>

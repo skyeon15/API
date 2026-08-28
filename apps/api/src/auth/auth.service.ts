@@ -152,8 +152,13 @@ export class AuthService {
     if (scopes.includes('phone')) payload.phone_number = user.phone;
     if (scopes.includes('address')) {
       payload.address = {
-        formatted: `${user.address} ${user.detailAddress}`,
-        postal_code: user.zipCode,
+        // 🔴 빈 값을 그대로 이어 붙이면 «null null» 이나 앞뒤 공백이 남는다
+        formatted: [user.address, user.detailAddress].filter(Boolean).join(' '),
+        street_address: user.address || undefined,
+        // OIDC 표준 주소에는 «상세 주소» 자리가 없다. 한국 주소는 동·호수가 따로 다뤄지고
+        // 연동 서비스가 배송지 칸을 둘로 나눠 두므로 확장 키로 함께 싣는다.
+        detail: user.detailAddress || undefined,
+        postal_code: user.zipCode || undefined,
       };
     }
 

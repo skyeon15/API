@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { scopeDetail, scopeLabel } from '@/lib/sso-scopes';
+import { openPostcodeSearch } from '@/lib/postcode';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -136,6 +138,17 @@ export default function ProfilePage() {
     }
   };
 
+  const handleFindAddress = async () => {
+    try {
+      const picked = await openPostcodeSearch();
+      // 그냥 닫은 경우다. 적어 두던 상세 주소를 지우지 않는다.
+      if (!picked) return;
+      setProfile((p) => ({ ...p, zipCode: picked.zonecode, address: picked.address }));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : '주소를 찾지 못했어요.');
+    }
+  };
+
   const handleRevokeGrant = async (clientId: string) => {
     if (!confirm('이 서비스의 연결을 해제하시겠습니까? 더 이상 로그인이 불가능할 수 있습니다.')) return;
     try {
@@ -236,10 +249,13 @@ export default function ProfilePage() {
                 <div className="space-y-2">
                   <Label>주소</Label>
                   <div className="flex gap-2">
-                    <Input placeholder="우편번호" className="w-24" value={profile.zipCode} onChange={(e) => setProfile({ ...profile, zipCode: e.target.value })} />
-                    <Input placeholder="기본 주소" className="flex-1" value={profile.address} onChange={(e) => setProfile({ ...profile, address: e.target.value })} />
+                    {/* 우편번호와 기본 주소는 검색으로만 채운다 — 손으로 적으면 표기가 제각각이 되고
+                        5자리를 틀리면 배송이 안 간다. 상세 주소만 직접 적는다. */}
+                    <Input placeholder="우편번호" className="w-24" value={profile.zipCode} readOnly />
+                    <Input placeholder="주소 검색을 눌러 주세요" className="flex-1" value={profile.address} readOnly />
+                    <Button type="button" variant="outline" onClick={handleFindAddress}>주소 검색</Button>
                   </div>
-                  <Input placeholder="상세 주소" value={profile.detailAddress} onChange={(e) => setProfile({ ...profile, detailAddress: e.target.value })} />
+                  <Input placeholder="상세 주소 (동·호수 등)" value={profile.detailAddress} onChange={(e) => setProfile({ ...profile, detailAddress: e.target.value })} />
                 </div>
 
                 <div className="flex justify-end pt-2">
@@ -266,7 +282,7 @@ export default function ProfilePage() {
                     <div>
                       <p className="font-semibold">{grant.client.clientName}</p>
                       <div className="flex gap-1 mt-1">
-                        {grant.grantedScopes.map(s => <Badge key={s} variant="secondary" className="text-[10px]">{s}</Badge>)}
+                        {grant.grantedScopes.map(s => <Badge key={s} variant="secondary" className="text-[10px]" title={scopeDetail(s)}>{scopeLabel(s)}</Badge>)}
                       </div>
                     </div>
                   </div>
