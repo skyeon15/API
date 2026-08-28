@@ -7,6 +7,7 @@ import { apiFetch } from '@/lib/api';
 import { CONFIG } from '@/lib/constants';
 import { isProfileComplete } from '@/lib/profile';
 import { resolvePostAuthDestination } from '@/lib/auth-redirect';
+import { openPostcodeSearch } from '@/lib/postcode';
 import { formatPhone } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,6 +24,7 @@ function RegisterForm() {
 
   const [form, setForm] = useState({
     name: '',
+    nickname: '',
     email: '',
     phone: '',
     birthDate: '',
@@ -56,6 +58,7 @@ function RegisterForm() {
     setForm((prev) => ({
       ...prev,
       name: prev.name || user.name || '',
+      nickname: prev.nickname || user.nickname || '',
       email: prev.email || user.email || '',
       phone: user.phone || prev.phone,
       birthDate: prev.birthDate || user.birthDate || '',
@@ -136,6 +139,17 @@ function RegisterForm() {
     }
   };
 
+  const handleFindAddress = async () => {
+    try {
+      const picked = await openPostcodeSearch();
+      // 그냥 닫은 경우다. 적어 두던 상세 주소를 지우지 않는다.
+      if (!picked) return;
+      setForm((f) => ({ ...f, zipCode: picked.zonecode, address: picked.address }));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : '주소를 찾지 못했어요.');
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -201,6 +215,18 @@ function RegisterForm() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   required
+                />
+                <p className="text-xs text-muted-foreground">
+                  배송·결제에 쓰이므로 실명을 적어 주세요.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="nickname">닉네임</Label>
+                <Input
+                  id="nickname"
+                  value={form.nickname}
+                  onChange={(e) => setForm({ ...form, nickname: e.target.value })}
+                  placeholder="서비스에서 불릴 이름 (선택)"
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
@@ -304,23 +330,23 @@ function RegisterForm() {
 
             <div className="space-y-2">
               <Label>주소 *</Label>
+              {/* 우편번호와 기본 주소는 검색으로만 넣는다 — 손으로 적으면 표기가 제각각이 되고
+                  5자리를 틀리면 배송이 안 간다. 상세 주소만 직접 적는다. */}
               <div className="flex gap-2">
+                <Input placeholder="우편번호" className="w-24" value={form.zipCode} readOnly />
                 <Input
-                  placeholder="우편번호"
-                  className="w-24"
-                  value={form.zipCode}
-                  onChange={(e) => setForm({ ...form, zipCode: e.target.value })}
-                />
-                <Input
-                  placeholder="기본 주소"
+                  placeholder="주소 검색을 눌러 주세요"
                   className="flex-1"
                   value={form.address}
-                  onChange={(e) => setForm({ ...form, address: e.target.value })}
+                  readOnly
                   required
                 />
+                <Button type="button" variant="outline" onClick={handleFindAddress}>
+                  주소 검색
+                </Button>
               </div>
               <Input
-                placeholder="상세 주소"
+                placeholder="상세 주소 (동·호수 등)"
                 value={form.detailAddress}
                 onChange={(e) => setForm({ ...form, detailAddress: e.target.value })}
               />

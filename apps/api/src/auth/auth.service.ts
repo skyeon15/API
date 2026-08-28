@@ -217,6 +217,14 @@ export class AuthService {
       // 유저 정보 보강 (기존 유저 정보가 누락된 경우 소셜 정보로 채워줌)
       const user = socialAccount.user;
       let updated = false;
+      if (!user.name && profile.name) {
+        user.name = profile.name;
+        updated = true;
+      }
+      if (!user.nickname && profile.nickname) {
+        user.nickname = profile.nickname;
+        updated = true;
+      }
       if (!user.phone && profile.phone) {
         user.phone = profile.phone;
         updated = true;
@@ -254,6 +262,14 @@ export class AuthService {
       // 이미 회원가입된 상태이므로 정보가 비어있다면 채워줌
       const user = await this.getUserById(currentUserId);
       let updated = false;
+      if (!user.name && profile.name) {
+        user.name = profile.name;
+        updated = true;
+      }
+      if (!user.nickname && profile.nickname) {
+        user.nickname = profile.nickname;
+        updated = true;
+      }
       if (!user.phone && profile.phone) {
         user.phone = profile.phone;
         updated = true;
@@ -283,7 +299,11 @@ export class AuthService {
     if (!user) {
       user = await this.userRepo.save(
         this.userRepo.create({
-          name: profile.name || '사용자',
+          // 🔴 «사용자» 같은 가짜 이름을 넣지 않는다. name 은 NOT NULL 이라 빈 문자열을
+          //    쓰는데, 가입 완료 판정(isProfileComplete)이 공백을 «없음»으로 보므로
+          //    소셜에서 실명이 안 오면 가입 정보 입력 화면이 제대로 뜬다.
+          name: profile.name || '',
+          nickname: profile.nickname || null,
           email: profile.email,
           ci: profile.ci,
           phone: profile.phone,
@@ -295,6 +315,14 @@ export class AuthService {
     } else {
       // 정보 업데이트 (기존 유저 정보 보강)
       let updated = false;
+      if (!user.name && profile.name) {
+        user.name = profile.name;
+        updated = true;
+      }
+      if (!user.nickname && profile.nickname) {
+        user.nickname = profile.nickname;
+        updated = true;
+      }
       if (!user.phone && profile.phone) {
         user.phone = profile.phone;
         updated = true;
@@ -421,7 +449,12 @@ export class AuthService {
     return {
       providerUserId: String(id),
       email: account?.email,
-      name: account?.profile?.nickname,
+      // 🔴 `profile.nickname` 은 닉네임이지 실명이 아니다. 카카오의 실명은
+      //    `kakao_account.name` 이고 별도 동의 항목이라 안 올 수 있다.
+      //    실명을 못 받으면 비워 둔다 — 닉네임을 실명 칸에 넣으면 가입 완료로
+      //    잘못 판정돼 사용자가 이름을 적을 기회를 잃는다.
+      name: account?.name ?? null,
+      nickname: account?.profile?.nickname ?? null,
       profileImageUrl: account?.profile?.profile_image_url,
       phone,
       gender,
@@ -451,6 +484,7 @@ export class AuthService {
       id,
       email,
       name,
+      nickname,
       profile_image,
       ci,
       gender,
@@ -468,7 +502,9 @@ export class AuthService {
     return {
       providerUserId: id,
       email,
-      name,
+      // 네이버는 실명(name)과 닉네임(nickname)을 따로 준다. 섞지 않는다.
+      name: name ?? null,
+      nickname: nickname ?? null,
       profileImageUrl: profile_image,
       phone: mobile ? mobile.replace(/[- ]/g, '') : null,
       gender: gender || 'U',
