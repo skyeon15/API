@@ -14,7 +14,7 @@ import {
   PaymentTransactionStatus,
   PaymentProvider,
 } from './entities/payment-transaction.entity.js';
-import { User } from './entities/user.entity.js';
+import { User, UserRole } from './entities/user.entity.js';
 
 // 카드가 아닌 저장 수단(간편결제)의 표시명
 const WALLET_LABELS: Record<string, string> = {
@@ -277,12 +277,22 @@ export class StripeService {
     transactionId: string,
     data: { amount?: number; reason?: string },
   ) {
+    // 🔴 결제는 «구매자» 계정으로 귀속된다(카드가 서비스 소유자 한 명에게 몰리지 않게
+    //    연동 서비스가 사용자 토큰으로 결제를 걸기 때문). 그래서 연동 서비스의 관리자는
+    //    구매자의 거래를 소유하지 않아 환불을 못 부른다.
+    //    ADMIN 은 소유자 확인을 건너뛴다 — 남의 돈을 되돌리는 일이므로 아래에 기록을 남긴다.
+    const isAdmin = user.roles?.includes(UserRole.ADMIN) ?? false;
     const tx = await this.txRepo.findOneBy({
       id: transactionId,
-      userId: user.id,
+      ...(isAdmin ? {} : { userId: user.id }),
       provider: PaymentProvider.STRIPE,
     });
     if (!tx) throw new NotFoundException('결제 내역을 찾을 수 없습니다.');
+    if (isAdmin && tx.userId !== user.id) {
+      this.logger.warn(
+        `[환불] 관리자 대행 — 관리자=${user.id} 구매자=${tx.userId} 거래=${tx.id} 주문=${tx.orderId}`,
+      );
+    }
     if (!tx.stripePaymentIntentId) {
       throw new BadRequestException('환불 가능한 결제가 아닙니다.');
     }
