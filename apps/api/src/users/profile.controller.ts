@@ -25,6 +25,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { ApiKeyOrSessionGuard } from '../common/guards/api-key-or-session.guard.js';
 import { Service } from '../common/decorators/service.decorator.js';
 import {
+  ApiBody,
   ApiTags,
   ApiOperation,
   ApiBearerAuth,
@@ -44,6 +45,8 @@ import {
   RegisterPaymentDto,
   UpdatePaymentDto,
   ChargeCardDto,
+  RequestPaymentDto,
+  RequestPaymentResponseDto,
   CancelTransactionDto,
   IssueCashReceiptDto,
   RegisterStripeCardDto,
@@ -310,6 +313,30 @@ export class ProfileController {
       throw new BadRequestException('필수 항목이 누락되었습니다.');
     }
     return this.paymentService.chargeCard(user, {
+      ...body,
+      feedbackBaseUrl: resolveApiBaseUrl(req),
+    });
+  }
+
+  @Post('payments/request')
+  @ApiOperation({
+    summary: 'PayApp 결제창 요청 (일회성 결제)',
+    description:
+      '돌려주는 `payUrl` 로 고객을 보내면 PayApp 결제창이 열려요. ' +
+      '카드 정보는 PayApp 이 직접 받으므로 호출 서비스가 만지지 않아요.\n\n' +
+      '🔴 응답이 «결제됨»을 뜻하지 않습니다. 결제 완료는 PayApp 웹훅으로 확정되니, ' +
+      '`GET /profile/payments/transactions?externalOrderId=...` 로 확인하세요.',
+  })
+  @ApiBody({ type: RequestPaymentDto })
+  @ApiOkResponse({ type: RequestPaymentResponseDto })
+  async requestPayment(@Req() req: any, @Body() body: RequestPaymentDto) {
+    const userId = this.getUserId(req);
+    const user = await this.userRepo.findOneBy({ id: userId });
+    if (!user) throw new NotFoundException('사용자를 찾을 수 없습니다.');
+    if (!body?.sellerId || !body?.goodName || !body?.amount) {
+      throw new BadRequestException('필수 항목이 누락되었습니다.');
+    }
+    return this.paymentService.requestPayment(user, {
       ...body,
       feedbackBaseUrl: resolveApiBaseUrl(req),
     });

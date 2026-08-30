@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { PaymentMethod } from './entities/payment-method.entity.js';
 import { PayappSeller } from './entities/payapp-seller.entity.js';
 import {
+  PaymentProvider,
   PaymentTransaction,
   PaymentTransactionStatus,
 } from './entities/payment-transaction.entity.js';
@@ -461,6 +462,119 @@ export class PaymentService {
   }
 
   // ── 결제 취소 (paycancel, 부분취소 지원) ───────────────────────────────────
+  /**
+   * PayApp 결제창 요청 (일회성 결제).
+   *
+   * `chargeCard` 는 **저장해 둔 카드**로 청구하는 것이라 카드번호를 먼저 받아야 한다.
+   * 처음 사는 고객에게 그걸 시키면 카드번호가 연동 서비스의 서버를 지나게 되어
+   * PCI 범위가 그쪽으로 넘어간다. 결제창은 PayApp 이 직접 띄우므로 그럴 일이 없다.
+   *
+   * 서비스 API 키로 부르는 것이 정상이다 — 카드를 저장하지 않으므로
+   * 「서비스 키로 최종 사용자 카드 대행」 금지에 걸리지 않고, 거래가 서비스 계정으로
+   * 귀속돼 정산 집계가 자동으로 맞는다(중앙집중 수납 모델).
+   *
+   * 결제 완료는 여기서 정하지 않는다. PayApp 이 `feedbackurl` 로 알려 주고
+   * `handlePayappWebhook` 이 `var1`(주문번호)로 이 거래를 찾아 PAID 로 바꾼다.
+   */
+  async requestPayment(
+    user: User,
+    data: {
+      sellerId: string;
+      goodName: string;
+      amount: number;
+      buyerName?: string;
+      buyerPhone?: string;
+      externalOrderId?: string;
+      returnUrl?: string;
+      feedbackUrl?: string;
+      feedbackBaseUrl?: string;
+      memo?: string;
+    },
+  ) {
+    const seller = await this.sellerRepo.findOneBy({
+      id: data.sellerId,
+      userId: user.id,
+      isActive: true,
+    });
+    if (!seller) throw new NotFoundException('판매자 계정을 찾을 수 없습니다.');
+
+    if (!data.amount || data.amount <= 0) {
+      throw new BadRequestException('결제 금액이 유효하지 않습니다.');
+    }
+
+    const orderId = generateOrderId();
+    const tx = this.txRepo.create({
+      userId: user.id,
+      provider: PaymentProvider.PAYAPP,
+      sellerId: seller.id,
+      orderId,
+      externalOrderId: data.externalOrderId || null,
+      goodName: data.goodName,
+      amount: data.amount,
+      cancelledAmount: 0,
+      buyerName: data.buyerName || user.name || '',
+      buyerPhone: data.buyerPhone || user.phone || '',
+      payMethod: 'payapp',
+      status: PaymentTransactionStatus.PENDING,
+      memo: data.memo,
+    });
+    await this.txRepo.save(tx);
+
+    const postData: Record<string, any> = {
+      cmd: 'payrequest',
+      userid: seller.sellerId,
+      linkkey: seller.linkKey,
+      goodname: data.goodName,
+      price: String(data.amount),
+      recvphone: (data.buyerPhone || '').replace(/\D/g, ''),
+      // 문자를 보내지 않는다 — 결제창은 우리가 바로 띄운다
+      smsuse: 'n',
+      // 배송지는 우리 주문서에서 이미 받았다. 결제창에서 또 묻지 않는다.
+      reqaddr: '0',
+      // 같은 요청이 두 번 들어와도 중복 결제되지 않게
+      checkretry: 'y',
+      // 웹훅이 이 값으로 거래를 찾는다(handlePayappWebhook)
+      var1: orderId,
+    };
+    if (data.returnUrl) postData.returnurl = data.returnUrl;
+    const feedbackUrl = data.feedbackUrl || this.getWebhookUrl(data.feedbackBaseUrl);
+    if (feedbackUrl) postData.feedbackurl = feedbackUrl;
+
+    try {
+      const result = await this.callPayapp(postData);
+      tx.rawResponse = result;
+
+      if (result.state !== '1') {
+        tx.status = PaymentTransactionStatus.FAILED;
+        await this.txRepo.save(tx);
+        const errno = String(result.errno ?? '');
+        // 20020 은 대개 파라미터가 아니라 «판매자 계정이 결제 불가 상태»(심사 미완료)다
+        const hint =
+          errno === '20020'
+            ? ' (판매자 계정이 결제 가능한 상태인지 PayApp 관리자에서 확인해 보세요.)'
+            : '';
+        throw new BadRequestException(
+          `${result.errorMessage || '결제 요청에 실패했습니다.'}${hint}${errno ? ` [PayApp errno: ${errno}]` : ''}`,
+        );
+      }
+
+      tx.mulNo = (result.mul_no as string) || null;
+      const payUrl = (result.payurl as string) || (result.pay_url as string) || null;
+      tx.receiptUrl = payUrl;
+      await this.txRepo.save(tx);
+
+      // 🔴 결제창 주소를 돌려줄 뿐 «결제됐다»가 아니다. 확정은 웹훅이 한다.
+      return { payUrl, orderId, transactionId: tx.id, mulNo: tx.mulNo };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      this.logger.error(`Payapp API Error [payrequest]: ${error.message}`);
+      tx.status = PaymentTransactionStatus.FAILED;
+      tx.rawResponse = { error: error.message };
+      await this.txRepo.save(tx);
+      throw new BadRequestException('payapp 통신 중 오류가 발생했습니다: ' + error.message);
+    }
+  }
+
   async cancelTransaction(
     user: User,
     transactionId: string,

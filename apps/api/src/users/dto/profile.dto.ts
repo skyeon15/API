@@ -323,3 +323,44 @@ export class StripeConfigResponseDto {
   })
   livemode: boolean;
 }
+
+export class RequestPaymentDto {
+  @ApiProperty({ description: '판매자 계정 ID (payapp_sellers.id)' })
+  sellerId: string;
+
+  @ApiProperty({ description: '상품명. 결제창과 영수증에 그대로 보여요', example: '에케 트래커 BV 6점 세트' })
+  goodName: string;
+
+  @ApiProperty({ description: '결제 금액(원 단위 정수)', example: 290000 })
+  amount: number;
+
+  @ApiProperty({ description: '구매자 이름', required: false })
+  buyerName?: string;
+
+  @ApiProperty({ description: '구매자 연락처', required: false })
+  buyerPhone?: string;
+
+  @ApiProperty({
+    description: '호출 서비스측 주문번호 (대사용). 거래 조회 시 필터로 쓸 수 있어요',
+    required: false,
+    example: '20260830-N5FBVX',
+  })
+  externalOrderId?: string;
+
+  @ApiProperty({ description: '결제를 마친 뒤 고객이 돌아올 주소', required: false })
+  returnUrl?: string;
+}
+
+export class RequestPaymentResponseDto {
+  @ApiProperty({ description: '이 주소로 고객을 보내면 PayApp 결제창이 열려요' })
+  payUrl: string;
+
+  @ApiProperty({ description: '플랫폼이 매긴 주문번호' })
+  orderId: string;
+
+  @ApiProperty({ description: '플랫폼 거래 ID. 대사에 씁니다' })
+  transactionId: string;
+
+  @ApiProperty({ description: 'PayApp 거래번호', nullable: true })
+  mulNo: string | null;
+}
