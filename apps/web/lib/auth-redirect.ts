@@ -17,13 +17,19 @@ export function resolvePostAuthDestination(
   const redirectPath = params.get('redirect') || '/profile';
 
   if (clientId && redirectUri) {
-    const authUrl = new URL(`${apiBase}/auth/authorize`);
-    authUrl.searchParams.set('client_id', clientId);
-    authUrl.searchParams.set('redirect_uri', redirectUri);
-    authUrl.searchParams.set('response_type', 'code');
-    authUrl.searchParams.set('scope', scope);
-    authUrl.searchParams.set('state', state);
-    return { external: authUrl.toString() };
+    // 🔴 URL 객체로 조립하지 않는다. apiBase 는 rewrites 를 타는 상대경로('/api')라
+    //    new URL('/api/auth/authorize') 가 base 없이 불려 TypeError 로 터졌다.
+    //    그 예외가 useEffect 안에서 잡히지 않아 로그인 페이지가 통째로
+    //    "Application error: a client-side exception" 으로 죽었다.
+    //    이동은 window.location.href 로 하므로 상대경로 그대로 넘겨도 브라우저가 푼다.
+    const query = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope,
+      state,
+    });
+    return { external: `${apiBase}/auth/authorize?${query.toString()}` };
   }
 
   return { internal: redirectPath };
