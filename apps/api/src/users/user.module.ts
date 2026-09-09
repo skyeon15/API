@@ -10,8 +10,10 @@ import { VerificationCode } from './entities/verification-code.entity.js';
 import { ProfileController } from './profile.controller.js';
 import { StripeConfigController } from './stripe-config.controller.js';
 import { PayappWebhookController } from './payapp-webhook.controller.js';
+import { SsoPaymentController } from './sso-payment.controller.js';
 import { StripeWebhookController } from './stripe-webhook.controller.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
+import { OauthClient } from '../auth/entities/oauth-client.entity.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { PaymentService } from './payment.service.js';
 import { StripeService } from './stripe.service.js';
@@ -26,12 +28,14 @@ import { StripeService } from './stripe.service.js';
       CashReceipt,
       VerificationCode,
       ApiKey,
+      OauthClient,
     ]),
     forwardRef(() => AuthModule),
     HttpModule,
   ],
   controllers: [
     ProfileController,
+    SsoPaymentController,
     PayappWebhookController,
     StripeWebhookController,
     StripeConfigController,

@@ -131,6 +131,49 @@ API 한 곳에 두고 내려 준다(`users/stripe-config.controller.ts`).
 - **금지 패턴**: 서비스 API 키로 **최종 사용자의 카드 저장·빌링** 대행. 모든 최종 사용자 카드가 키 소유자 1명의 Customer에 섞여 카드-사용자 매핑 오류 시 플랫폼이 오청구를 막을 수 없음. 최종 사용자 빌링이 필요해지면 `externalUserId` 단위 Customer 분리를 먼저 구현할 것
 - 미구현(계획): 결제 완료 시 플랫폼→서비스 콜백 웹훅. 현재는 서비스가 거래 조회로 확인
 
+### 연동 서비스 정기결제 — `/sso/payments/*` (`users/sso-payment.controller.ts`)
+
+최종 사용자의 **빌링키**를 서비스의 판매자 계정으로 발급한다. 학생 구독처럼 «매달 자동으로
+빠져나가는» 요금이 이 길을 쓴다.
+
+- **왜 `/profile/payments` 로는 안 되나**: 거기는 «내 카드를 **내가 소유한** 판매자 계정에» 등록하는
+  곳이다(`registerCard` 의 `seller.userId === user.id` 검사). 연동 서비스의 고객은 우리 판매자 계정을
+  소유하지 않아 그 문으로는 못 들어온다. 여기서는 판매자를 **`oauth_clients.payappSellerId`** 로 정한다
+  (관리 콘솔에서 서비스마다 걸어 준다. 비어 있으면 그 서비스는 정기결제를 못 쓴다)
+- 발급 본체는 `payment.service.ts` 의 `registerCardOnSeller` / `chargeCardOnSeller` 다.
+  판매자를 **고르는 규칙만** 둘로 갈렸을 뿐이라 본체는 한 벌로 둔다 — 소유권 검사는 부르는 쪽 몫
+
+**자격이 셋이다. 부르는 시점이 다르기 때문이다.**
+
+| | 자격 | 왜 |
+|---|---|---|
+| 카드 등록 `POST /sso/payments/methods` | **플랫폼 세션** | 카드번호를 받는 화면이 플랫폼에 있다(아래) |
+| 조회·해지 `GET`/`DELETE .../methods` | **SSO 액세스 토큰 + `payment` scope** | 사용자가 그 서비스 화면을 보고 있다 |
+| 청구 `POST /sso/payments/charge` | **서비스 API 키** | 매달 도는 일이라 사용자 토큰이 없다(15분짜리다) |
+
+🔴 **카드번호는 플랫폼만 받는다.** PayApp `billRegist` 는 결제창이 아니라 카드번호를 그대로 받는
+API 라, 연동 서비스가 자기 폼으로 받으면 그 서비스의 서버·로그가 카드정보 취급 범위(PCI)에 들어간다.
+그래서 등록 화면을 플랫폼이 갖는다 — `apps/web/src/app/payments/register`
+(`?client_id=&return_url=`). 서비스는 사용자를 그리로 보내고 복귀만 받는다.
+**복귀 주소는 그 클라이언트의 `redirectUris` 와 출처가 같아야 한다**(`register-context` 가 검증).
+검사 없이 되돌려 보내면 카드 등록 직후라는 가장 속기 쉬운 순간에 오픈 리다이렉트가 된다.
+
+🔴 **청구가 «서비스 키로 최종 사용자 카드 대행» 금지에 걸리지 않는 이유**: 카드는 사용자 본인이
+자기 세션으로 등록했고 `payment_methods.userId` 로 갈려 있다. 금지가 막는 것은 «키 소유자 한 명의
+Customer 에 남의 카드가 섞이는 것»이다. 그래도 남의 서비스가 우리 고객을 긁지 못하게,
+**키 소유자 = 그 클라이언트의 판매자 계정 주인**일 때만 통과시킨다.
+
+🔴 **SSO 토큰으로 열린 문은 여기가 처음이다.** `SsoScopeGuard`(`common/guards/sso-scope.guard.ts`)가
+`isSsoToken` 을 쓰는 유일한 곳이다 — 그전까지 그 헬퍼는 정의만 되어 있었다.
+`ApiKeyOrSessionGuard` 는 여전히 SSO 토큰을 거부한다(scope 동의 우회 차단). 두 가드를 헷갈리지 말 것.
+
+⚠️ **남은 구멍 — `allowedScopes` 가 검증되지 않는다.** `/auth/authorize` 는 요청받은 scope 를 그대로
+토큰에 싣는다(`oauth_clients.allowedScopes` 는 저장·노출만 된다). 그래서 `payment` scope 는
+지금 **클라이언트가 스스로 붙일 수 있다.** 클라이언트가 confidential(시크릿 보관)이고 우리가 직접
+등록하는 것들뿐이라 당장의 구멍은 아니지만, 이 문을 진짜로 잠그려면 authorize 에서
+allowedScopes 를 검사해야 한다. 🔴 지금 켜면 **allowedScopes 가 기본값(openid,profile)인 기존
+클라이언트의 로그인이 깨진다** — DB 를 먼저 채우고 켤 것.
+
 ## 알림톡 발송 (중복 폭주 방지)
 
 `alimtalk/alimtalk.service.ts`의 `send()`는 두 겹의 안전장치를 갖는다. 2026-08-20 장애(1분에 207건, 한 수신자 16통) 재발 방지용:

@@ -222,6 +222,8 @@ export class PaymentService {
     },
   ) {
     // 빌링키는 판매자 계정에 귀속된다. 카드는 선택한 판매자의 계정으로 등록한다.
+    // 🔴 여기는 «내가 소유한 판매자 계정»에만 등록하는 길이다. 연동 서비스의 고객 카드를
+    //    그 서비스의 판매자에 다는 길은 `registerCardOnSeller`(sso-payment.controller) 다.
     const seller = await this.sellerRepo.findOneBy({
       id: cardInfo.sellerId,
       userId: user.id,
@@ -230,7 +232,29 @@ export class PaymentService {
     if (!seller) {
       throw new NotFoundException('판매자 계정을 찾을 수 없습니다.');
     }
+    return this.registerCardOnSeller(user, seller, cardInfo);
+  }
 
+  /**
+   * 빌링키 발급 본체 — 판매자 계정을 **이미 정해서** 넘긴다.
+   *
+   * 판매자를 고르는 규칙이 둘로 갈려서 뽑아냈다.
+   *   · 내 카드를 내 판매자에 (`registerCard`) — 소유자 검사
+   *   · 고객 카드를 서비스의 판매자에 (SSO) — `oauth_clients.payappSellerId`
+   * 소유권 검사는 **부르는 쪽 몫**이다. 여기서는 검사하지 않는다.
+   */
+  async registerCardOnSeller(
+    user: User,
+    seller: PayappSeller,
+    cardInfo: {
+      cardNo: string;
+      expMonth: string;
+      expYear: string;
+      cardPw: string;
+      buyerAuthNo: string;
+      memo?: string;
+    },
+  ) {
     const userid = seller.sellerId;
     const linkkey = seller.linkKey;
 
@@ -376,7 +400,29 @@ export class PaymentService {
     if (!seller) {
       throw new NotFoundException('판매자 계정을 찾을 수 없습니다.');
     }
+    return this.chargeCardOnSeller(user, paymentMethod, seller, data);
+  }
 
+  /**
+   * 등록 카드로 청구하는 본체 — 카드와 판매자를 **이미 찾아서** 넘긴다.
+   * `registerCardOnSeller` 와 같은 이유로 갈랐다(판매자를 고르는 규칙이 둘이다).
+   */
+  async chargeCardOnSeller(
+    user: User,
+    paymentMethod: PaymentMethod,
+    seller: PayappSeller,
+    data: {
+      goodName: string;
+      amount: number;
+      /** 부르는 서비스의 주문번호. 대사는 이 값으로 한다 */
+      externalOrderId?: string;
+      buyerName?: string;
+      buyerPhone?: string;
+      memo?: string;
+      feedbackUrl?: string;
+      feedbackBaseUrl?: string;
+    },
+  ) {
     if (!data.amount || data.amount <= 0) {
       throw new BadRequestException('결제 금액이 유효하지 않습니다.');
     }
@@ -394,6 +440,7 @@ export class PaymentService {
       buyerPhone: data.buyerPhone || user.phone,
       payMethod: 'billing',
       status: PaymentTransactionStatus.PENDING,
+      externalOrderId: data.externalOrderId ?? null,
       memo: data.memo,
     });
     await this.txRepo.save(tx);
