@@ -43,7 +43,16 @@ interface SsoClient {
   primaryColor: string;
   allowedScopes: string[];
   autoGrant: boolean;
+  /** 이 서비스의 수납 판매자 계정(payapp_sellers.id). 정기결제를 안 쓰면 비어 있다 */
+  payappSellerId?: string | null;
   createdAt: string;
+}
+
+/** 고를 수 있는 PayApp 판매자 계정 (내 계정 것만 — `GET /profile/sellers`) */
+interface Seller {
+  id: string;
+  sellerId: string;
+  memo?: string | null;
 }
 
 interface ClientForm {
@@ -53,6 +62,7 @@ interface ClientForm {
   autoGrant: boolean;
   logoUrl: string;
   primaryColor: string;
+  payappSellerId: string;
 }
 
 const EMPTY_FORM: ClientForm = {
@@ -62,10 +72,12 @@ const EMPTY_FORM: ClientForm = {
   autoGrant: false,
   logoUrl: '',
   primaryColor: '',
+  payappSellerId: '',
 };
 
 export function SsoClientsSection() {
   const [clients, setClients] = useState<SsoClient[]>([]);
+  const [sellers, setSellers] = useState<Seller[]>([]);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null); // null = 새로 만들기
   const [form, setForm] = useState<ClientForm>(EMPTY_FORM);
@@ -81,6 +93,16 @@ export function SsoClientsSection() {
   useEffect(() => {
     fetchClients();
   }, [fetchClients]);
+
+  // 수납 판매자로 고를 수 있는 것은 **내 계정의** 판매자뿐이다. 청구는
+  // «서비스 키 소유자 = 판매자 주인»일 때만 통과하므로(sso-payment.controller),
+  // 남의 판매자를 걸어 두면 그 서비스는 청구를 못 한다.
+  useEffect(() => {
+    apiFetch(`${API_BASE}/profile/sellers`)
+      .then((res) => (res.ok ? res.json() : []))
+      .then((rows: Seller[]) => setSellers(Array.isArray(rows) ? rows : []))
+      .catch(() => setSellers([]));
+  }, []);
 
   const copyValue = (fieldKey: string, value: string) => {
     navigator.clipboard.writeText(value);
@@ -106,6 +128,7 @@ export function SsoClientsSection() {
       autoGrant: client.autoGrant,
       logoUrl: client.logoUrl ?? '',
       primaryColor: client.primaryColor ?? '',
+      payappSellerId: client.payappSellerId ?? '',
     });
     setFormError('');
     setFormOpen(true);
@@ -144,6 +167,7 @@ export function SsoClientsSection() {
         allowedScopes: form.allowedScopes,
         autoGrant: form.autoGrant,
         logoUrl: form.logoUrl.trim() || null,
+        payappSellerId: form.payappSellerId || null,
         ...(form.primaryColor.trim()
           ? { primaryColor: form.primaryColor.trim() }
           : {}),
@@ -347,6 +371,20 @@ export function SsoClientsSection() {
                 </div>
               </div>
 
+              <div>
+                <p className="text-xs text-muted-foreground mb-1">수납 판매자</p>
+                {client.payappSellerId ? (
+                  <p className="text-xs">
+                    {sellers.find((x) => x.id === client.payappSellerId)?.sellerId ??
+                      client.payappSellerId}
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    없음 — 이 서비스는 정기결제를 쓸 수 없습니다
+                  </p>
+                )}
+              </div>
+
               <SsoClientAdmins clientRowId={client.id} />
             </div>
           </div>
@@ -410,6 +448,28 @@ export function SsoClientsSection() {
                     );
                   })}
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label>수납 판매자 계정 (정기결제)</Label>
+                <select
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                  value={form.payappSellerId}
+                  onChange={(e) =>
+                    setForm({ ...form, payappSellerId: e.target.value })
+                  }
+                >
+                  <option value="">사용 안 함</option>
+                  {sellers.map((seller) => (
+                    <option key={seller.id} value={seller.id}>
+                      {seller.sellerId}
+                      {seller.memo ? ` · ${seller.memo}` : ''}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">
+                  이 서비스 고객의 카드가 여기 고른 판매자 계정으로 등록됩니다. 빌링키는
+                  판매자에 귀속되므로, 나중에 바꾸면 이미 등록된 카드로는 청구할 수 없습니다.
+                </p>
               </div>
               <div className="flex items-center justify-between">
                 <div>

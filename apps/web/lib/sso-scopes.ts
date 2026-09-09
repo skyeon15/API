@@ -25,6 +25,9 @@ export const SCOPE_OPTIONS: ScopeInfo[] = [
   { value: 'email', label: '이메일', detail: '이메일 주소' },
   { value: 'phone', label: '전화번호', detail: '휴대전화 번호' },
   { value: 'address', label: '주소', detail: '주소 · 우편번호' },
+  // 클레임이 아니라 **API 접근 권한**이다 — 이 scope 가 있어야 연동 서비스가
+  // 사용자 자격으로 `/sso/payments/*`(등록해 둔 카드 조회·해지)를 부를 수 있다.
+  { value: 'payment', label: '정기결제', detail: '이 서비스에 등록한 결제 카드 조회 · 해지' },
 ];
 
 const BY_VALUE = new Map(SCOPE_OPTIONS.map((s) => [s.value, s]));

@@ -30,6 +30,9 @@ const EDITABLE_FIELDS = [
   'allowedScopes',
   'requiredScopes',
   'autoGrant',
+  // 이 서비스의 수납 판매자 계정. 최종 사용자의 빌링키가 이 판매자로 발급된다
+  // (`/sso/payments/*`). 비어 있으면 그 서비스는 정기결제를 쓸 수 없다.
+  'payappSellerId',
 ] as const;
 
 /** 관리 콘솔(웹) 전용 SSO 클라이언트 관리 API — 외부 연동 문서에는 노출하지 않는다 */
@@ -61,6 +64,7 @@ export class SsoAdminController {
       allowedScopes: body.allowedScopes ?? ['openid', 'profile'],
       requiredScopes: body.requiredScopes ?? ['openid', 'profile'],
       autoGrant: body.autoGrant ?? false,
+      payappSellerId: body.payappSellerId ?? null,
       ...(body.primaryColor ? { primaryColor: body.primaryColor } : {}),
     });
     return this.oauthClientRepo.save(client);
