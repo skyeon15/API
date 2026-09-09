@@ -30,6 +30,7 @@ Desktop.ini
 *.md
 !README.md
 !LICENSE.md
+!CLAUDE.md
 !LICENSE
 
 .env*
