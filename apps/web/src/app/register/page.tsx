@@ -11,7 +11,7 @@ import { openPostcodeSearch } from '@/lib/postcode';
 import {
   StripeAddressField,
   type OverseasAddress,
-} from './_components/stripe-address-field';
+} from '@/components/stripe-address-field';
 import {
   COUNTRY_OPTIONS,
   DEFAULT_COUNTRY,

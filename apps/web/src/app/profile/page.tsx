@@ -12,10 +12,20 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { scopeDetail, scopeLabel } from '@/lib/sso-scopes';
 import { openPostcodeSearch } from '@/lib/postcode';
+import {
+  StripeAddressField,
+  type OverseasAddress,
+} from '@/components/stripe-address-field';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { formatPhone } from '@/lib/utils';
+import {
+  COUNTRY_OPTIONS,
+  DEFAULT_COUNTRY,
+  splitPhone,
+  toE164,
+  type CountryCode,
+} from '@/lib/phone';
 
 const API_BASE = CONFIG.API_BASE;
 
@@ -46,10 +56,23 @@ export default function ProfilePage() {
     email: '',
     birthDate: '',
     gender: '',
+    phone: '',
     address: '',
     detailAddress: '',
     zipCode: '',
+    addressCountry: '',
+    addressCity: '',
+    addressState: '',
   });
+
+  // 전화번호는 로그인 수단이 아니라 연락처다 — 가입창과 같이 국가코드 + 번호로 받는다.
+  // 저장 형식이 국내는 국내표기, 해외는 E.164 라 국가를 따로 들고 있어야 한다.
+  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
+
+  // 주소: 국내는 다음 우편번호(국내 주소만 준다), 그 밖의 나라는 Stripe Address Element.
+  // 가입창과 같은 규칙이다 — 여기서도 고칠 수 있어야 해외 사용자가 이사를 갈 수 있다.
+  const [overseasAddress, setOverseasAddress] = useState(false);
+  const [overseasComplete, setOverseasComplete] = useState(true);
 
   const [socialAccounts, setSocialAccounts] = useState<SocialAccount[]>([]);
   const [grants, setGrants] = useState<Grant[]>([]);
@@ -63,6 +86,11 @@ export default function ProfilePage() {
       router.replace('/login?redirect=/profile');
       return;
     }
+    // 저장된 번호를 (국가, 국내표기)로 되돌려 채운다.
+    const stored = user.phone ? splitPhone(user.phone) : null;
+    if (stored) setCountry(stored.country);
+    if (user.addressCountry && user.addressCountry !== 'KR') setOverseasAddress(true);
+
     setProfile({
       name: user.name || '',
       nickname: user.nickname || '',
@@ -70,9 +98,13 @@ export default function ProfilePage() {
       email: user.email || '',
       birthDate: user.birthDate || '',
       gender: user.gender || '',
+      phone: stored ? stored.national : '',
       address: user.address || '',
       detailAddress: user.detailAddress || '',
       zipCode: user.zipCode || '',
+      addressCountry: user.addressCountry || '',
+      addressCity: user.addressCity || '',
+      addressState: user.addressState || '',
     });
     fetchIamData();
   }, [user, authLoading]);
@@ -94,21 +126,39 @@ export default function ProfilePage() {
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setProfileError('');
     setProfileSuccess(false);
+
+    const e164 = toE164(country, profile.phone);
+    if (!e164) {
+      setProfileError('전화번호를 정확히 입력해주세요.');
+      return;
+    }
+    // 주소는 선택이지만, 적기 시작했다면 끝까지 받아야 쓸 수 있는 주소가 된다.
+    if (overseasAddress && profile.address.trim() && !overseasComplete) {
+      setProfileError('주소를 끝까지 입력해주세요.');
+      return;
+    }
+
+    setLoading(true);
     try {
       const res = await apiFetch(`${API_BASE}/auth/me`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profile),
+        body: JSON.stringify({ ...profile, phone: e164 }),
         credentials: 'include',
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        // 중복 번호처럼 서버가 이유를 주는 경우가 있다 — 삼키지 않는다.
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || '');
+      }
       await refresh();
       setProfileSuccess(true);
-    } catch {
-      setProfileError('프로필 업데이트에 실패했습니다.');
+    } catch (err) {
+      setProfileError(
+        (err instanceof Error && err.message) || '프로필 업데이트에 실패했습니다.',
+      );
     } finally {
       setLoading(false);
     }
@@ -143,7 +193,14 @@ export default function ProfilePage() {
       const picked = await openPostcodeSearch();
       // 그냥 닫은 경우다. 적어 두던 상세 주소를 지우지 않는다.
       if (!picked) return;
-      setProfile((p) => ({ ...p, zipCode: picked.zonecode, address: picked.address }));
+      setProfile((p) => ({
+        ...p,
+        zipCode: picked.zonecode,
+        address: picked.address,
+        addressCountry: 'KR',
+        addressCity: '',
+        addressState: '',
+      }));
     } catch (e) {
       alert(e instanceof Error ? e.message : '주소를 찾지 못했어요.');
     }
@@ -212,8 +269,28 @@ export default function ProfilePage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="phone">전화번호</Label>
-                  <Input id="phone" value={user.phone ? formatPhone(user.phone) : '-'} disabled readOnly />
-                  <p className="text-xs text-muted-foreground">본인인증으로 확인된 번호라 직접 수정할 수 없습니다.</p>
+                  <div className="flex gap-2">
+                    <select
+                      aria-label="국가"
+                      className="h-10 w-40 shrink-0 px-2 rounded-md border border-input bg-background text-sm"
+                      value={country}
+                      onChange={(e) => setCountry(e.target.value as CountryCode)}
+                    >
+                      {COUNTRY_OPTIONS.map((c) => (
+                        <option key={c.code} value={c.code}>
+                          {c.flag} {c.name} +{c.callingCode}
+                        </option>
+                      ))}
+                    </select>
+                    <Input
+                      id="phone"
+                      type="tel"
+                      className="flex-1"
+                      placeholder={country === DEFAULT_COUNTRY ? '010-1234-5678' : '전화번호'}
+                      value={profile.phone}
+                      onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -250,15 +327,66 @@ export default function ProfilePage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>주소</Label>
-                  <div className="flex gap-2">
-                    {/* 우편번호와 기본 주소는 검색으로만 채운다 — 손으로 적으면 표기가 제각각이 되고
-                        5자리를 틀리면 배송이 안 간다. 상세 주소만 직접 적는다. */}
-                    <Input placeholder="우편번호" className="w-24" value={profile.zipCode} readOnly />
-                    <Input placeholder="주소 검색을 눌러 주세요" className="flex-1" value={profile.address} readOnly />
-                    <Button type="button" variant="outline" onClick={handleFindAddress}>주소 검색</Button>
+                  <div className="flex items-center justify-between">
+                    <Label>주소</Label>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="h-auto p-0 text-xs underline text-muted-foreground"
+                      onClick={() => {
+                        // 입력 방식을 바꾸면 앞서 넣은 주소는 형식이 달라 남겨 둘 수 없다.
+                        setOverseasAddress((v) => !v);
+                        setOverseasComplete(true);
+                        setProfile((p) => ({
+                          ...p,
+                          zipCode: '',
+                          address: '',
+                          detailAddress: '',
+                          addressCountry: '',
+                          addressCity: '',
+                          addressState: '',
+                        }));
+                      }}
+                    >
+                      {overseasAddress ? '국내 주소 입력하기' : '해외 주소 입력하기'}
+                    </Button>
                   </div>
-                  <Input placeholder="상세 주소 (동·호수 등)" value={profile.detailAddress} onChange={(e) => setProfile({ ...profile, detailAddress: e.target.value })} />
+
+                  {overseasAddress ? (
+                    <StripeAddressField
+                      defaultValue={{
+                        line1: profile.address,
+                        line2: profile.detailAddress,
+                        city: profile.addressCity,
+                        state: profile.addressState,
+                        postalCode: profile.zipCode,
+                        country: profile.addressCountry,
+                      }}
+                      onChange={(addr: OverseasAddress, complete) => {
+                        setOverseasComplete(complete);
+                        setProfile((p) => ({
+                          ...p,
+                          address: addr.line1,
+                          detailAddress: addr.line2,
+                          addressCity: addr.city,
+                          addressState: addr.state,
+                          zipCode: addr.postalCode,
+                          addressCountry: addr.country,
+                        }));
+                      }}
+                    />
+                  ) : (
+                    <>
+                      <div className="flex gap-2">
+                        {/* 우편번호와 기본 주소는 검색으로만 채운다 — 손으로 적으면 표기가 제각각이 되고
+                            5자리를 틀리면 배송이 안 간다. 상세 주소만 직접 적는다. */}
+                        <Input placeholder="우편번호" className="w-24" value={profile.zipCode} readOnly />
+                        <Input placeholder="주소 검색을 눌러 주세요" className="flex-1" value={profile.address} readOnly />
+                        <Button type="button" variant="outline" onClick={handleFindAddress}>주소 검색</Button>
+                      </div>
+                      <Input placeholder="상세 주소 (동·호수 등)" value={profile.detailAddress} onChange={(e) => setProfile({ ...profile, detailAddress: e.target.value })} />
+                    </>
+                  )}
                 </div>
 
                 <div className="flex justify-end pt-2">
@@ -300,8 +428,8 @@ export default function ProfilePage() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>연동된 소셜 계정</CardTitle>
-              <CardDescription>로그인에 사용하는 소셜 계정들입니다.</CardDescription>
+              <CardTitle>연동된 계정</CardTitle>
+              <CardDescription>로그인에 사용하는 계정들입니다.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {['kakao', 'naver', 'google'].map(provider => {
