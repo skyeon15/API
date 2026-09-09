@@ -354,8 +354,14 @@ export class AuthController {
   ) {
     const state = Math.random().toString(36).substring(2, 12);
     const finalRedirect = redirect || this.resolveDefaultRedirect(req);
+    // 🔴 finalRedirect 를 그대로 이어 붙이면 안 된다. SSO 흐름에서는 이 값이
+    //    `.../login?client_id=..&redirect_uri=..&scope=..&state=..` 처럼 쿼리를 달고 오는데,
+    //    인코딩하지 않으면 네이버가 콜백할 때 Express 가 `&` 에서 쪼개 버린다 —
+    //    finalRedirect 는 client_id 까지만 남고, redirect_uri 가 사라져 서비스로 돌아가지
+    //    못하며(`/profile` 로 떨어진다), 게다가 서비스의 state 가 네이버 자신의 state 와
+    //    충돌해 토큰 교환까지 망가진다.
     const callbackUrl = encodeURIComponent(
-      `${resolveApiBaseUrl(req)}/auth/naver/callback?finalRedirect=${finalRedirect}`,
+      `${resolveApiBaseUrl(req)}/auth/naver/callback?finalRedirect=${encodeURIComponent(finalRedirect)}`,
     );
     const naverAuthUrl = `https://nid.naver.com/oauth2.0/authorize?client_id=${CONFIG.NAVER.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&state=${state}`;
     return res.redirect(naverAuthUrl);
