@@ -7,16 +7,27 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class SsoTokenRequestDto {
   @ApiProperty({
-    description: '고정값 authorization_code',
-    enum: ['authorization_code'],
+    description:
+      '`authorization_code`(인가 코드 교환) 또는 `refresh_token`(액세스 토큰 갱신). ' +
+      '액세스 토큰은 15분이므로 그 뒤에는 refresh_token 으로 이어 간다.',
+    enum: ['authorization_code', 'refresh_token'],
     example: 'authorization_code',
   })
   grant_type: string;
 
   @ApiProperty({
     description: 'authorize 리다이렉트로 받은 인가 코드 (발급 후 5분 만료, 1회용)',
+    required: false,
   })
-  code: string;
+  code?: string;
+
+  @ApiProperty({
+    description:
+      'grant_type=refresh_token 일 때. 토큰 교환으로 받은 refreshToken. ' +
+      '🔴 **회전**하므로 응답의 새 값으로 반드시 덮어쓸 것',
+    required: false,
+  })
+  refresh_token?: string;
 
   @ApiProperty({ description: '발급받은 클라이언트 ID' })
   client_id: string;

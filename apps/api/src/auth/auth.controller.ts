@@ -147,7 +147,17 @@ export class AuthController {
     @Body('client_id') clientId: string,
     @Body('client_secret') clientSecret: string,
     @Body('redirect_uri') redirectUri: string,
+    @Body('refresh_token') refreshToken: string,
   ) {
+    // 연동 서비스가 사용자 자격을 이어 가는 길. 액세스 토큰이 15분이라 이게 없으면
+    // 로그인 15분 뒤부터 그 서비스는 사용자 토큰이 필요한 API 를 전부 잃는다.
+    if (grantType === 'refresh_token') {
+      return this.authService.refreshSsoToken(
+        refreshToken,
+        clientId,
+        clientSecret,
+      );
+    }
     if (grantType !== 'authorization_code')
       throw new BadRequestException('Unsupported grant type');
     return this.authService.exchangeCode(

@@ -700,6 +700,60 @@ export class AuthService {
     };
   }
 
+  /**
+   * SSO 리프레시 그랜트 — 연동 서비스가 **사용자 자격**을 이어 가는 유일한 길.
+   *
+   * 🔴 이게 없어서 연동 서비스는 로그인 15분 뒤부터 사용자 토큰을 잃었다.
+   *    `POST /auth/refresh`(세션 갱신)는 SSO 발급분(`refresh_tokens.clientId`)을 거부하고,
+   *    설령 통과시켜도 거기서 나오는 것은 표식 없는 **세션 토큰**이라 `/sso/*` 를 못 부른다.
+   *    그래서 연동 서비스 쪽에는 «15분마다 다시 로그인시켜라» 말고 방법이 없었다.
+   * 🔴 scope 는 **동의 이력**(`oauth_grants`)에서 가져온다. 리프레시가 동의보다 넓은 권한을
+   *    만들어 내면 안 되고, 반대로 좁히면 갱신 뒤에 조용히 403 이 난다.
+   * 🔴 리프레시 토큰은 **회전**한다. 쓰인 토큰은 즉시 버린다.
+   */
+  async refreshSsoToken(
+    refreshToken: string,
+    clientId: string,
+    clientSecret: string,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const client = await this.oauthClientRepo.findOneBy({
+      clientId,
+      clientSecret,
+    });
+    if (!client)
+      throw new UnauthorizedException('클라이언트 인증에 실패했습니다.');
+
+    const record = await this.refreshTokenRepo.findOne({
+      where: { token: refreshToken, expiresAt: MoreThan(new Date()) },
+    });
+    if (!record)
+      throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+
+    // 🔴 남의 서비스에 발급된 토큰으로 내 토큰을 받아 갈 수 없다.
+    //    (브라우저 세션용 토큰도 여기서 걸린다 — 그쪽은 clientId 가 비어 있다.)
+    if (record.clientId !== clientId) {
+      throw new UnauthorizedException(
+        '이 클라이언트에 발급된 리프레시 토큰이 아닙니다.',
+      );
+    }
+
+    const grant = await this.oauthGrantRepo.findOneBy({
+      userId: record.userId,
+      clientId,
+    });
+    const scope = (grant?.grantedScopes?.length
+      ? grant.grantedScopes
+      : ['openid', 'profile']
+    ).join(' ');
+
+    await this.refreshTokenRepo.remove(record);
+
+    return {
+      accessToken: this.issueAccessToken(record.userId, { clientId, scope }),
+      refreshToken: await this.issueRefreshToken(record.userId, clientId),
+    };
+  }
+
   async revokeRefreshToken(token: string) {
     await this.refreshTokenRepo.delete({ token });
   }
