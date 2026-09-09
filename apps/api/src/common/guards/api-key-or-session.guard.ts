@@ -10,6 +10,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ApiKey } from '../../admin/entities/api-key.entity.js';
 import { SERVICE_KEY } from '../decorators/service.decorator.js';
+import { isSessionToken } from '../utils/session-token.util.js';
 
 /**
  * Accepts either:
@@ -57,11 +58,13 @@ export class ApiKeyOrSessionGuard implements CanActivate {
         }
       }
 
-      // 1-b. Try as JWT
+      // 1-b. Try as JWT (세션 토큰만. SSO 액세스 토큰은 여기로 들어와도 거부한다)
       try {
-        const payload: { sub: string } = this.jwtService.verify(token);
-        req['userId'] = payload.sub;
-        return true;
+        const payload = this.jwtService.verify(token);
+        if (isSessionToken(payload)) {
+          req['userId'] = payload.sub;
+          return true;
+        }
       } catch {
         // Not a valid JWT, fall through
       }
@@ -71,9 +74,13 @@ export class ApiKeyOrSessionGuard implements CanActivate {
     const cookieToken: string | undefined = req.cookies?.access_token;
     if (cookieToken) {
       try {
-        const payload: { sub: string } = this.jwtService.verify(cookieToken);
-        req['userId'] = payload.sub;
-        return true;
+        const payload = this.jwtService.verify(cookieToken);
+        // SSO 액세스 토큰은 세션이 아니다. 연동 서비스가 받은 토큰을 쿠키에 실어
+        // 결제·프로필 API 를 호출하는 것을 막는다(scope 동의 우회).
+        if (isSessionToken(payload)) {
+          req['userId'] = payload.sub;
+          return true;
+        }
       } catch {
         // invalid token
       }

@@ -15,11 +15,16 @@ interface User {
   profileImageUrl?: string;
   email?: string;
   phone: string;
+  /** 문자 인증으로 확인된 번호인지 (해외 번호는 인증 없이 등록되므로 false) */
+  phoneVerified?: boolean;
   birthDate?: string;
   gender?: string;
   address?: string;
   detailAddress?: string;
   zipCode?: string;
+  addressCountry?: string;
+  addressCity?: string;
+  addressState?: string;
   roles: string[];
   company?: string;
   createdAt: string;
@@ -28,7 +33,6 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (phone: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -97,20 +101,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     refresh();
   }, []);
 
-  const login = async (phone: string, code: string) => {
-    const res = await fetch(`${API_BASE}/auth/verify-code`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, code }),
-      credentials: 'include',
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || '로그인 실패');
-    }
-    setUser(await res.json());
-  };
-
   const logout = async () => {
     await fetch(`${API_BASE}/auth/logout`, {
       method: 'POST',
@@ -120,7 +110,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
+    <AuthContext.Provider value={{ user, loading, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

@@ -51,6 +51,7 @@
     "express-formidable": "^1.2.0",
     "express-session": "^1.19.0",
     "ioredis": "^5.10.1",
+    "libphonenumber-js": "^1.13.12",
     "nestjs-pino": "^4.6.1",
     "node-ical": "^0.25.6",
     "path": "^0.12.7",

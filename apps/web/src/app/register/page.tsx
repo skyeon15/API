@@ -8,7 +8,17 @@ import { CONFIG } from '@/lib/constants';
 import { isProfileComplete } from '@/lib/profile';
 import { resolvePostAuthDestination } from '@/lib/auth-redirect';
 import { openPostcodeSearch } from '@/lib/postcode';
-import { formatPhone } from '@/lib/utils';
+import {
+  StripeAddressField,
+  type OverseasAddress,
+} from './_components/stripe-address-field';
+import {
+  COUNTRY_OPTIONS,
+  DEFAULT_COUNTRY,
+  splitPhone,
+  toE164,
+  type CountryCode,
+} from '@/lib/phone';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -32,16 +42,22 @@ function RegisterForm() {
     zipCode: '',
     address: '',
     detailAddress: '',
+    addressCountry: '',
+    addressCity: '',
+    addressState: '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // 전화번호 본인인증 (소셜에서 번호가 넘어오지 않은 계정만 필요)
-  const phoneVerified = Boolean(user?.phone);
-  const [codeSent, setCodeSent] = useState(false);
-  const [code, setCode] = useState('');
-  const [phoneLoading, setPhoneLoading] = useState(false);
-  const [phoneError, setPhoneError] = useState('');
+  // 전화번호는 로그인 수단이 아니라 연락처다 — 문자 인증 없이 입력값을 그대로 저장한다.
+  // 국가는 저장 형식(국내 표기 / E.164)을 가르므로 따로 받는다.
+  const [country, setCountry] = useState<CountryCode>(DEFAULT_COUNTRY);
+  const e164 = toE164(country, form.phone);
+
+  // 주소: 국내는 다음 우편번호(도로명주소·5자리 우편번호가 정확하다), 그 밖의 나라는
+  // Stripe Address Element. 해외 주소는 국가별 필수 항목이 달라 Stripe 의 완료 판정을 그대로 쓴다.
+  const [overseasAddress, setOverseasAddress] = useState(false);
+  const [overseasComplete, setOverseasComplete] = useState(false);
 
   // 미로그인 시 로그인으로, 이미 필수정보가 있으면 원래 목적지로 보낸다.
   useEffect(() => {
@@ -54,18 +70,26 @@ function RegisterForm() {
       goToDestination();
       return;
     }
+    // 저장된 번호는 (국가, 국내표기)로 되돌려 채운다 — 해외 번호는 E.164 로 저장돼 있다.
+    const stored = user.phone ? splitPhone(user.phone) : null;
+    if (stored) setCountry(stored.country);
+    if (user.addressCountry && user.addressCountry !== 'KR') setOverseasAddress(true);
+
     // 소셜/휴대폰 로그인에서 받아온 값 선채움 (사용자가 이미 입력한 값은 덮어쓰지 않는다)
     setForm((prev) => ({
       ...prev,
       name: prev.name || user.name || '',
       nickname: prev.nickname || user.nickname || '',
       email: prev.email || user.email || '',
-      phone: user.phone || prev.phone,
+      phone: stored ? stored.national : prev.phone,
       birthDate: prev.birthDate || user.birthDate || '',
       gender: prev.gender || user.gender || '',
       zipCode: prev.zipCode || user.zipCode || '',
       address: prev.address || user.address || '',
       detailAddress: prev.detailAddress || user.detailAddress || '',
+      addressCountry: prev.addressCountry || user.addressCountry || '',
+      addressCity: prev.addressCity || user.addressCity || '',
+      addressState: prev.addressState || user.addressState || '',
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
@@ -89,62 +113,19 @@ function RegisterForm() {
     }
   };
 
-  const handleRequestPhoneCode = async () => {
-    setPhoneError('');
-    if (!form.phone.trim()) {
-      setPhoneError('전화번호를 입력해주세요.');
-      return;
-    }
-    setPhoneLoading(true);
-    try {
-      const res = await apiFetch(`${API_BASE}/auth/request-phone-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: form.phone }),
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || '인증번호 발송에 실패했습니다.');
-      }
-      setCodeSent(true);
-    } catch (err: any) {
-      setPhoneError(err.message || '인증번호 발송에 실패했습니다.');
-    } finally {
-      setPhoneLoading(false);
-    }
-  };
-
-  const handleVerifyPhone = async () => {
-    setPhoneError('');
-    setPhoneLoading(true);
-    try {
-      const res = await apiFetch(`${API_BASE}/auth/verify-phone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: form.phone, code }),
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.message || '인증에 실패했습니다.');
-      }
-      setCodeSent(false);
-      setCode('');
-      await refresh();
-    } catch (err: any) {
-      setPhoneError(err.message || '인증에 실패했습니다.');
-    } finally {
-      setPhoneLoading(false);
-    }
-  };
-
   const handleFindAddress = async () => {
     try {
       const picked = await openPostcodeSearch();
       // 그냥 닫은 경우다. 적어 두던 상세 주소를 지우지 않는다.
       if (!picked) return;
-      setForm((f) => ({ ...f, zipCode: picked.zonecode, address: picked.address }));
+      setForm((f) => ({
+        ...f,
+        zipCode: picked.zonecode,
+        address: picked.address,
+        addressCountry: 'KR',
+        addressCity: '',
+        addressState: '',
+      }));
     } catch (e) {
       setError(e instanceof Error ? e.message : '주소를 찾지 못했어요.');
     }
@@ -154,8 +135,8 @@ function RegisterForm() {
     e.preventDefault();
     setError('');
 
-    if (!phoneVerified) {
-      setError('전화번호 본인인증을 완료해주세요.');
+    if (!e164) {
+      setError('전화번호를 정확히 입력해주세요.');
       return;
     }
 
@@ -163,10 +144,15 @@ function RegisterForm() {
       !form.name.trim() ||
       !form.gender ||
       !form.birthDate ||
-      !form.email.trim() ||
-      !form.address.trim();
+      !form.email.trim();
     if (missing) {
       setError('필수 항목을 모두 입력해주세요.');
+      return;
+    }
+    // 주소는 선택이지만, 적기 시작했다면 끝까지 받아야 쓸 수 있는 주소가 된다.
+    // 해외 주소의 완료 판정은 나라마다 필수 칸이 달라 Stripe 의 것을 그대로 따른다.
+    if (overseasAddress && form.address.trim() && !overseasComplete) {
+      setError('주소를 끝까지 입력해주세요.');
       return;
     }
 
@@ -175,7 +161,7 @@ function RegisterForm() {
       const res = await apiFetch(`${API_BASE}/auth/me`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, phone: e164 }),
         credentials: 'include',
       });
       if (!res.ok) throw new Error();
@@ -221,65 +207,42 @@ function RegisterForm() {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="nickname">닉네임</Label>
+                <Label htmlFor="nickname">닉네임 *</Label>
                 <Input
                   id="nickname"
                   value={form.nickname}
                   onChange={(e) => setForm({ ...form, nickname: e.target.value })}
-                  placeholder="서비스에서 불릴 이름 (선택)"
+                  placeholder="비워두면 이름으로 채워집니다"
                 />
               </div>
               <div className="space-y-2 sm:col-span-2">
                 <Label htmlFor="phone">전화번호 *</Label>
-                {phoneVerified ? (
-                  <>
-                    <Input id="phone" value={formatPhone(form.phone)} disabled readOnly />
-                    <p className="text-xs text-muted-foreground">
-                      본인인증으로 확인된 번호라 직접 수정할 수 없습니다.
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex gap-2">
-                      <Input
-                        id="phone"
-                        type="tel"
-                        placeholder="010-1234-5678"
-                        className="flex-1"
-                        value={form.phone}
-                        onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                        disabled={codeSent}
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={codeSent ? () => setCodeSent(false) : handleRequestPhoneCode}
-                        disabled={phoneLoading}
-                      >
-                        {codeSent ? '번호 변경' : phoneLoading ? '발송 중...' : '인증번호 받기'}
-                      </Button>
-                    </div>
-                    {codeSent && (
-                      <div className="flex gap-2">
-                        <Input
-                          id="code"
-                          type="text"
-                          placeholder="6자리 숫자"
-                          maxLength={6}
-                          className="flex-1 tracking-widest"
-                          value={code}
-                          onChange={(e) => setCode(e.target.value)}
-                        />
-                        <Button type="button" onClick={handleVerifyPhone} disabled={phoneLoading}>
-                          {phoneLoading ? '확인 중...' : '인증 확인'}
-                        </Button>
-                      </div>
-                    )}
-                    {phoneError && (
-                      <p className="text-xs text-destructive">{phoneError}</p>
-                    )}
-                  </>
-                )}
+                <div className="flex gap-2">
+                  <select
+                    aria-label="국가"
+                    className="h-10 w-40 shrink-0 px-2 rounded-md border border-input bg-background text-sm"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value as CountryCode)}
+                  >
+                    {COUNTRY_OPTIONS.map((c) => (
+                      <option key={c.code} value={c.code}>
+                        {c.flag} {c.name} +{c.callingCode}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder={country === DEFAULT_COUNTRY ? '010-1234-5678' : '전화번호'}
+                    className="flex-1"
+                    value={form.phone}
+                    onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                    required
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  주문·배송 안내를 받을 연락처입니다.
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">이메일 *</Label>
@@ -324,32 +287,92 @@ function RegisterForm() {
                     />{' '}
                     여성
                   </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="gender"
+                      value="U"
+                      checked={form.gender === 'U'}
+                      onChange={(e) => setForm({ ...form, gender: e.target.value })}
+                    />{' '}
+                    선택안함
+                  </label>
                 </div>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>주소 *</Label>
-              {/* 우편번호와 기본 주소는 검색으로만 넣는다 — 손으로 적으면 표기가 제각각이 되고
-                  5자리를 틀리면 배송이 안 간다. 상세 주소만 직접 적는다. */}
-              <div className="flex gap-2">
-                <Input placeholder="우편번호" className="w-24" value={form.zipCode} readOnly />
-                <Input
-                  placeholder="주소 검색을 눌러 주세요"
-                  className="flex-1"
-                  value={form.address}
-                  readOnly
-                  required
-                />
-                <Button type="button" variant="outline" onClick={handleFindAddress}>
-                  주소 검색
+              <div className="flex items-center justify-between">
+                <Label>주소 <span className="text-muted-foreground font-normal">(선택)</span></Label>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-auto p-0 text-xs underline text-muted-foreground"
+                  onClick={() => {
+                    // 입력 방식을 바꾸면 앞서 넣은 주소는 형식이 달라 남겨 둘 수 없다.
+                    setOverseasAddress((v) => !v);
+                    setOverseasComplete(false);
+                    setForm((f) => ({
+                      ...f,
+                      zipCode: '',
+                      address: '',
+                      detailAddress: '',
+                      addressCountry: '',
+                      addressCity: '',
+                      addressState: '',
+                    }));
+                  }}
+                >
+                  {overseasAddress ? '국내 주소 입력하기' : '해외 주소 입력하기'}
                 </Button>
               </div>
-              <Input
-                placeholder="상세 주소 (동·호수 등)"
-                value={form.detailAddress}
-                onChange={(e) => setForm({ ...form, detailAddress: e.target.value })}
-              />
+
+              {overseasAddress ? (
+                <StripeAddressField
+                  defaultValue={{
+                    line1: form.address,
+                    line2: form.detailAddress,
+                    city: form.addressCity,
+                    state: form.addressState,
+                    postalCode: form.zipCode,
+                    country: form.addressCountry,
+                  }}
+                  onChange={(addr: OverseasAddress, complete) => {
+                    setOverseasComplete(complete);
+                    setForm((f) => ({
+                      ...f,
+                      address: addr.line1,
+                      detailAddress: addr.line2,
+                      addressCity: addr.city,
+                      addressState: addr.state,
+                      zipCode: addr.postalCode,
+                      addressCountry: addr.country,
+                    }));
+                  }}
+                />
+              ) : (
+                <>
+                  {/* 우편번호와 기본 주소는 검색으로만 넣는다 — 손으로 적으면 표기가 제각각이 되고
+                      5자리를 틀리면 배송이 안 간다. 상세 주소만 직접 적는다. */}
+                  <div className="flex gap-2">
+                    <Input placeholder="우편번호" className="w-24" value={form.zipCode} readOnly />
+                    <Input
+                      placeholder="주소 검색을 눌러 주세요"
+                      className="flex-1"
+                      value={form.address}
+                      readOnly
+                    />
+                    <Button type="button" variant="outline" onClick={handleFindAddress}>
+                      주소 검색
+                    </Button>
+                  </div>
+                  <Input
+                    placeholder="상세 주소 (동·호수 등)"
+                    value={form.detailAddress}
+                    onChange={(e) => setForm({ ...form, detailAddress: e.target.value })}
+                  />
+                </>
+              )}
             </div>
 
             <Button type="submit" className="w-full" disabled={loading}>

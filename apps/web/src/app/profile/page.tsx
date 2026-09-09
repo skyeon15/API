@@ -191,7 +191,7 @@ export default function ProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle>내 프로필</CardTitle>
-              <CardDescription>통합 Identity 정보를 관리합니다.</CardDescription>
+              <CardDescription>통합 회원 정보를 관리합니다. 연결된 모든 서비스에 적용됩니다.</CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleUpdateProfile} className="space-y-4">
@@ -241,6 +241,9 @@ export default function ProfilePage() {
                       </label>
                       <label className="flex items-center gap-2 cursor-pointer">
                         <input type="radio" name="gender" value="F" checked={profile.gender === 'F'} onChange={(e) => setProfile({ ...profile, gender: e.target.value })} /> 여성
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="radio" name="gender" value="U" checked={profile.gender === 'U'} onChange={(e) => setProfile({ ...profile, gender: e.target.value })} /> 선택안함
                       </label>
                     </div>
                   </div>

@@ -7,10 +7,7 @@ import { CONFIG } from '@/lib/constants';
 import { isProfileComplete } from '@/lib/profile';
 import { resolvePostAuthDestination } from '@/lib/auth-redirect';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 
 const API_BASE = CONFIG.API_BASE;
 
@@ -22,14 +19,9 @@ interface ClientInfo {
 }
 
 function LoginForm() {
-  const [phone, setPhone] = useState('');
-  const [code, setCode] = useState('');
-  const [step, setStep] = useState<1 | 2>(1);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
 
-  const { user, loading: authLoading, login } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -75,39 +67,6 @@ function LoginForm() {
     }
   }, [user, authLoading, searchParams, router]);
 
-  const handleRequestCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      const res = await fetch(`${API_BASE}/auth/request-code`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone }),
-      });
-      if (!res.ok) throw new Error('인증번호 요청에 실패했습니다.');
-      setStep(2);
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleVerifyCode = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    try {
-      await login(phone, code);
-      // useEffect에서 리다이렉트 처리됨
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleSocialLogin = (provider: string) => {
     // 소셜 로그인 후 다시 이 페이지로 돌아오도록 설정 (redirect 파라미터 유지)
     const returnUrl = new URL(window.location.href);
@@ -132,17 +91,11 @@ function LoginForm() {
             {clientInfo ? `${clientInfo.clientName} 로그인` : '로그인'}
           </CardTitle>
           <CardDescription>
-            {clientInfo ? '계정으로 계속하려면 로그인하세요' : '휴대폰 번호로 시작하세요'}
+            {clientInfo ? '계정으로 계속하려면 로그인하세요' : '소셜 계정으로 시작하세요'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {error && (
-            <Alert variant="destructive">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
-
-          {/* 1. 소셜 로그인 버튼들 */}
+          {/* 소셜 로그인 — 유일한 로그인 수단이다 */}
           <div className="grid grid-cols-1 gap-2">
             <Button
               variant="outline"
@@ -166,62 +119,6 @@ function LoginForm() {
               Google로 시작하기
             </Button>
           </div>
-
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-background px-2 text-muted-foreground">또는 휴대폰 인증</span>
-            </div>
-          </div>
-
-          {/* 2. 휴대폰 번호 인증 폼 */}
-          {step === 1 ? (
-            <form onSubmit={handleRequestCode} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="phone">휴대폰 번호</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="010-1234-5678"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  required
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? '요청 중...' : '인증번호 받기'}
-              </Button>
-            </form>
-          ) : (
-            <form onSubmit={handleVerifyCode} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="code">인증번호</Label>
-                <Input
-                  id="code"
-                  type="text"
-                  placeholder="6자리 숫자"
-                  maxLength={6}
-                  className="text-center text-xl tracking-widest"
-                  value={code}
-                  onChange={(e) => setCode(e.target.value)}
-                  required
-                />
-              </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? '확인 중...' : '로그인'}
-              </Button>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full text-sm"
-                onClick={() => setStep(1)}
-              >
-                다시 입력하기
-              </Button>
-            </form>
-          )}
 
           {/* 의면적 동의 고지 */}
           <p className="text-xs text-center text-muted-foreground leading-relaxed">

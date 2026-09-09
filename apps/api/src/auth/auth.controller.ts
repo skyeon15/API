@@ -35,6 +35,10 @@ import {
 } from './dto/sso.dto.js';
 import { SocialProvider } from './entities/user-social-account.entity.js';
 import { CONFIG } from '../common/constants.js';
+import {
+  isSessionToken,
+  type AccessTokenPayload,
+} from '../common/utils/session-token.util.js';
 import { resolveApiBaseUrl } from '../common/utils/request-url.util.js';
 
 const COOKIE_OPTIONS = {
@@ -106,15 +110,8 @@ export class AuthController {
     //    아무도 굽지 않는 쿠키라 authorize 가 «항상 미로그인»으로 판정했고,
     //    /login 은 이미 로그인된 것을 보고 authorize 로 되돌려 보내서
     //    무한 리다이렉트가 났다(2026-08-29, SSO 첫 연동에서 드러남).
-    let userId: string | null = null;
-    const sessionToken = req.cookies?.access_token;
-    if (sessionToken) {
-      try {
-        userId = this.jwtService.verify(sessionToken).sub;
-      } catch {
-        // 만료·위조된 토큰은 미로그인과 같이 다룬다 → 아래에서 로그인 화면으로 보낸다
-      }
-    }
+    // 만료·위조된 토큰은 미로그인과 같이 다룬다 → 아래에서 로그인 화면으로 보낸다
+    const userId = this.optionalSessionUserId(req) ?? null;
 
     if (!userId) {
       const loginUrl = new URL(`${CONFIG.WEB_URL}/login`);
@@ -174,19 +171,15 @@ export class AuthController {
     if (!authHeader) throw new UnauthorizedException('Missing access token');
 
     const token = authHeader.replace('Bearer ', '');
+    let payload: AccessTokenPayload;
     try {
-      const payload = this.jwtService.verify(token);
-      const user = await this.authService.getUserById(payload.sub);
-      return {
-        sub: user.id,
-        name: user.name,
-        nickname: user.nickname,
-        email: user.email,
-        picture: user.profileImageUrl,
-      };
+      payload = this.jwtService.verify(token);
     } catch {
       throw new UnauthorizedException('Invalid access token');
     }
+
+    // scope 만큼만 내려준다. 서비스 관리자 여부(isServiceAdmin)는 토큰의 aud 기준이다.
+    return this.authService.getUserinfo(payload);
   }
 
   @Get('client/:clientId')
@@ -212,60 +205,74 @@ export class AuthController {
     return client;
   }
 
+  /**
+   * 쿠키 세션에서 사용자 id 를 꺼낸다.
+   *
+   * SSO 액세스 토큰은 쿠키로 실려 와도 거부한다 — 연동 서비스가 토큰 교환으로 받은 토큰으로
+   * 본인 전용 API(프로필 전체·연동 해제·결제)를 호출하면 scope 동의가 무의미해진다.
+   * 만료·위조 토큰은 401 이다(예전엔 verify 가 그대로 던져 500 이 나갔고, 웹의 자동 갱신은
+   * 401 에서만 동작하므로 세션이 끊긴 채 복구되지 않았다).
+   */
+  private sessionUserId(req: any): string {
+    const userId = this.optionalSessionUserId(req);
+    if (!userId) throw new UnauthorizedException('로그인이 필요합니다.');
+    return userId;
+  }
+
+  /** 로그인 상태면 사용자 id, 아니면 undefined. 실패를 예외로 만들지 않는다. */
+  private optionalSessionUserId(req: any): string | undefined {
+    const token = req.cookies?.access_token;
+    if (!token) return undefined;
+    try {
+      const payload = this.jwtService.verify(token);
+      return isSessionToken(payload) ? payload.sub : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   // --- Profile & Grant Management ---
 
   @ApiExcludeEndpoint()
   @Get('me')
   async getMe(@Req() req: any) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.getUserById(payload.sub);
+    const userId = this.sessionUserId(req);
+    return this.authService.getMyProfile(userId);
   }
 
   @ApiExcludeEndpoint()
   @Patch('me')
   async updateMe(@Req() req: any, @Body() data: any) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.updateProfile(payload.sub, data);
+    const userId = this.sessionUserId(req);
+    return this.authService.updateProfile(userId, data);
   }
 
   @ApiExcludeEndpoint()
   @Get('social')
   async getSocialAccounts(@Req() req: any) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.getSocialAccounts(payload.sub);
+    const userId = this.sessionUserId(req);
+    return this.authService.getSocialAccounts(userId);
   }
 
   @ApiExcludeEndpoint()
   @Delete('social/:provider')
   async unlinkSocial(@Req() req: any, @Param('provider') provider: any) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.unlinkSocialAccount(payload.sub, provider);
+    const userId = this.sessionUserId(req);
+    return this.authService.unlinkSocialAccount(userId, provider);
   }
 
   @ApiExcludeEndpoint()
   @Get('grants')
   async getGrants(@Req() req: any) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.getGrants(payload.sub);
+    const userId = this.sessionUserId(req);
+    return this.authService.getGrants(userId);
   }
 
   @ApiExcludeEndpoint()
   @Delete('grants/:clientId')
   async revokeGrant(@Req() req: any, @Param('clientId') clientId: string) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.revokeGrant(payload.sub, clientId);
+    const userId = this.sessionUserId(req);
+    return this.authService.revokeGrant(userId, clientId);
   }
 
   // --- Actual Social Login Implementation ---
@@ -308,14 +315,7 @@ export class AuthController {
     const callbackUrl = `${resolveApiBaseUrl(req)}/auth/kakao/callback`;
     const finalRedirect = state;
 
-    let currentUserId: string | undefined;
-    const token = req.cookies?.access_token;
-    if (token) {
-      try {
-        const payload = this.jwtService.verify(token);
-        currentUserId = payload.sub;
-      } catch {}
-    }
+    const currentUserId = this.optionalSessionUserId(req);
 
     const profile = await this.authService.getKakaoProfile(code, callbackUrl);
     const user = await this.authService.findOrCreateSocialUser(
@@ -370,14 +370,7 @@ export class AuthController {
     @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
-    let currentUserId: string | undefined;
-    const token = req.cookies?.access_token;
-    if (token) {
-      try {
-        const payload = this.jwtService.verify(token);
-        currentUserId = payload.sub;
-      } catch {}
-    }
+    const currentUserId = this.optionalSessionUserId(req);
 
     const profile = await this.authService.getNaverProfile(code, state);
     const user = await this.authService.findOrCreateSocialUser(
@@ -435,14 +428,7 @@ export class AuthController {
     const finalRedirect = state;
     const callbackUrl = `${resolveApiBaseUrl(req)}/auth/google/callback`;
 
-    let currentUserId: string | undefined;
-    const token = req.cookies?.access_token;
-    if (token) {
-      try {
-        const payload = this.jwtService.verify(token);
-        currentUserId = payload.sub;
-      } catch {}
-    }
+    const currentUserId = this.optionalSessionUserId(req);
 
     const profile = await this.authService.getGoogleProfile(code, callbackUrl);
     const user = await this.authService.findOrCreateSocialUser(
@@ -470,67 +456,6 @@ export class AuthController {
     });
 
     return res.redirect(finalRedirect || `${CONFIG.WEB_URL}/profile`);
-  }
-
-  // --- Existing Phone Auth Endpoints ---
-
-  @ApiExcludeEndpoint()
-  @Post('request-code')
-  requestCode(@Body('phone') phone: string) {
-    return this.authService.requestCode(phone.replace(/-/g, ''));
-  }
-
-  /** 로그인 상태에서 본인 전화번호 인증번호 발송(중복 번호는 발송 전에 거른다) */
-  @ApiExcludeEndpoint()
-  @Post('request-phone-code')
-  async requestPhoneCode(@Req() req: any, @Body('phone') phone: string) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.requestPhoneCode(
-      payload.sub,
-      phone.replace(/-/g, ''),
-    );
-  }
-
-  /** 로그인 상태에서 본인 전화번호 인증(소셜에서 번호가 넘어오지 않은 계정의 가입 완료용) */
-  @ApiExcludeEndpoint()
-  @Post('verify-phone')
-  async verifyPhone(
-    @Req() req: any,
-    @Body('phone') phone: string,
-    @Body('code') code: string,
-  ) {
-    const token = req.cookies?.access_token;
-    if (!token) throw new UnauthorizedException('로그인이 필요합니다.');
-    const payload = this.jwtService.verify(token);
-    return this.authService.verifyPhone(
-      payload.sub,
-      phone.replace(/-/g, ''),
-      code,
-    );
-  }
-
-  @ApiExcludeEndpoint()
-  @Post('verify-code')
-  async verifyCode(
-    @Body('phone') phone: string,
-    @Body('code') code: string,
-    @Res({ passthrough: true }) res: any,
-  ) {
-    const { user, accessToken, refreshToken } =
-      await this.authService.verifyCode(phone.replace(/-/g, ''), code);
-
-    res.cookie('access_token', accessToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 15 * 60 * 1000,
-    });
-    res.cookie('refresh_token', refreshToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
-
-    return user;
   }
 
   @ApiExcludeEndpoint()

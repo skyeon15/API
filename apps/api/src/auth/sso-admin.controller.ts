@@ -14,6 +14,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { randomBytes } from 'crypto';
 import { OauthClient } from './entities/oauth-client.entity.js';
+import { AuthService } from './auth.service.js';
 import { ApiKeyOrSessionGuard } from '../common/guards/api-key-or-session.guard.js';
 import { RolesGuard } from '../common/guards/roles.guard.js';
 import { Roles } from '../common/decorators/roles.decorator.js';
@@ -40,6 +41,7 @@ export class SsoAdminController {
   constructor(
     @InjectRepository(OauthClient)
     private readonly oauthClientRepo: Repository<OauthClient>,
+    private readonly authService: AuthService,
   ) {}
 
   @Get()
@@ -78,6 +80,34 @@ export class SsoAdminController {
     const client = await this.findOrThrow(id);
     client.clientSecret = randomBytes(32).toString('hex');
     return this.oauthClientRepo.save(client);
+  }
+
+  // --- 서비스별 관리자 ---
+  // 지정은 플랫폼 ADMIN 만 할 수 있다(이 컨트롤러 전체가 @Roles(ADMIN)).
+  // 연동 서비스는 `GET /auth/userinfo` 의 `isServiceAdmin` 으로 자기 관리자를 판별한다.
+
+  @Get(':id/admins')
+  async listAdmins(@Param('id') id: string) {
+    const client = await this.findOrThrow(id);
+    return this.authService.listClientAdmins(client.clientId);
+  }
+
+  @Post(':id/admins')
+  async addAdmin(
+    @Param('id') id: string,
+    @Body() body: { userId?: string; email?: string },
+  ) {
+    const client = await this.findOrThrow(id);
+    return this.authService.addClientAdmin(client.clientId, body);
+  }
+
+  @Delete(':id/admins/:userId')
+  async removeAdmin(
+    @Param('id') id: string,
+    @Param('userId') userId: string,
+  ) {
+    const client = await this.findOrThrow(id);
+    return this.authService.removeClientAdmin(client.clientId, userId);
   }
 
   @Delete(':id')

@@ -26,6 +26,7 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog';
 import { SCOPE_OPTIONS, scopeLabel } from '@/lib/sso-scopes';
+import { SsoClientAdmins } from './sso-client-admins';
 
 const API_BASE = CONFIG.API_BASE;
 
@@ -345,6 +346,8 @@ export function SsoClientsSection() {
                   ))}
                 </div>
               </div>
+
+              <SsoClientAdmins clientRowId={client.id} />
             </div>
           </div>
         ))}

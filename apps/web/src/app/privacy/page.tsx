@@ -28,7 +28,7 @@ export default function PrivacyPage() {
             <p>회사는 다음의 목적을 위하여 개인정보를 처리합니다. 처리한 개인정보는 다음의 목적 이외의 용도로는 사용되지 않으며, 이용 목적이 변경될 시에는 사전 동의를 구할 예정입니다.</p>
             <ol className="list-decimal pl-5 space-y-1 mt-2">
               <li>회원 가입 및 관리: 회원 가입의사 확인, 본인 식별·인증, 회원자격 유지·관리, 서비스 부정이용 방지</li>
-              <li>서비스 제공: 콘텐츠 제공, 본인인증, 알림톡·SMS 발송, 결제·정산</li>
+              <li>서비스 제공: 콘텐츠 제공, 소셜 계정을 통한 로그인, 알림톡·SMS 발송, 결제·정산</li>
               <li>고충처리: 민원인의 신원 확인, 민원사항 확인, 사실조사를 위한 연락·통지, 처리결과 통보</li>
             </ol>
           </div>
@@ -39,11 +39,11 @@ export default function PrivacyPage() {
               <p className="font-medium">필수항목</p>
               <ul className="list-disc pl-5 space-y-0.5">
                 <li>이름</li>
+                <li>닉네임</li>
                 <li>성별</li>
                 <li>생년월일</li>
-                <li>전화번호 (본인인증, 로그인 식별자)</li>
+                <li>전화번호 (연락처)</li>
                 <li>이메일</li>
-                <li>주소</li>
                 <li>소셜 로그인 사용 시: 카카오/네이버/구글이 제공하는 식별자, 이메일, 닉네임</li>
               </ul>
               <p className="font-medium mt-2">자동 수집 항목</p>
@@ -52,6 +52,7 @@ export default function PrivacyPage() {
               </ul>
               <p className="font-medium mt-2">선택항목</p>
               <ul className="list-disc pl-5 space-y-0.5">
+                <li>주소 (배송·청구가 필요한 서비스를 이용하는 경우)</li>
                 <li>프로필 사진, 추가 연락처 등 회원이 직접 입력한 정보</li>
               </ul>
             </div>

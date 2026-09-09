@@ -12,7 +12,6 @@ import { Redis } from 'ioredis';
 import axios from 'axios';
 import * as qs from 'querystring';
 import { User } from '../users/entities/user.entity.js';
-import { VerificationCode } from '../users/entities/verification-code.entity.js';
 import { RefreshToken } from './entities/refresh-token.entity.js';
 import {
   UserSocialAccount,
@@ -20,8 +19,12 @@ import {
 } from './entities/user-social-account.entity.js';
 import { OauthClient } from './entities/oauth-client.entity.js';
 import { OauthGrant, GrantStatus } from './entities/oauth-grant.entity.js';
-import { AlimtalkService } from '../alimtalk/alimtalk.service.js';
-import { AligoProvider } from '../alimtalk/aligo.provider.js';
+import { OauthClientAdmin } from './entities/oauth-client-admin.entity.js';
+import { parsePhone } from '../common/utils/phone.util.js';
+import {
+  SSO_TOKEN_TYPE,
+  type AccessTokenPayload,
+} from '../common/utils/session-token.util.js';
 
 // PATCH /auth/me 로 본인이 직접 수정할 수 있는 필드.
 // ci·roles·status·metadata 등 권한/식별 관련 필드는 제외하고, phone은 별도 규칙으로 처리한다.
@@ -35,6 +38,9 @@ const SELF_EDITABLE_PROFILE_FIELDS = [
   'zipCode',
   'address',
   'detailAddress',
+  'addressCountry',
+  'addressCity',
+  'addressState',
   'company',
 ] as const satisfies readonly (keyof User)[];
 
@@ -43,8 +49,6 @@ export class AuthService {
   constructor(
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
-    @InjectRepository(VerificationCode)
-    private readonly codeRepo: Repository<VerificationCode>,
     @InjectRepository(RefreshToken)
     private readonly refreshTokenRepo: Repository<RefreshToken>,
     @InjectRepository(UserSocialAccount)
@@ -53,9 +57,9 @@ export class AuthService {
     private readonly oauthClientRepo: Repository<OauthClient>,
     @InjectRepository(OauthGrant)
     private readonly oauthGrantRepo: Repository<OauthGrant>,
+    @InjectRepository(OauthClientAdmin)
+    private readonly clientAdminRepo: Repository<OauthClientAdmin>,
     private readonly jwtService: JwtService,
-    private readonly alimtalkService: AlimtalkService,
-    private readonly aligoProvider: AligoProvider,
     @Inject('REDIS_CLIENT')
     private readonly redis: Redis,
   ) {}
@@ -120,8 +124,13 @@ export class AuthService {
     await this.redis.del(`auth_code:${code}`);
 
     const user = await this.getUserById(codeData.userId);
-    const accessToken = this.issueAccessToken(user.id);
-    const refreshToken = await this.issueRefreshToken(user.id);
+    // 연동 서비스에 나가는 토큰은 세션 토큰과 구분돼야 한다 — 표식이 없으면 이 토큰을
+    // 쿠키에 실어 본인 전용 API 를 호출할 수 있다(scope 우회).
+    const accessToken = this.issueAccessToken(user.id, {
+      clientId,
+      scope: codeData.scope,
+    });
+    const refreshToken = await this.issueRefreshToken(user.id, clientId);
     const idToken = this.issueIdToken(user, clientId, codeData.scope);
 
     // 기록 및 연결 업데이트
@@ -141,29 +150,122 @@ export class AuthService {
       //    그래서 /auth/token 이 늘 500 이었다 — 아래 sign 옵션으로 수명을 준다.
     };
 
-    const scopes = scope.split(' ');
+    Object.assign(payload, this.buildScopedClaims(user, scope));
+
+    // id_token 은 1시간. issueAccessToken(15분)과 따로 정한다.
+    return this.jwtService.sign(payload, { expiresIn: '1h' });
+  }
+
+  /**
+   * scope 로 허용된 클레임만 고른다.
+   *
+   * id_token 과 userinfo 가 같은 규칙을 쓰게 하려고 한곳에 모았다 — 예전엔 userinfo 가
+   * scope 를 무시하고 늘 name/nickname/email/picture 를 줬고(동의 안 받은 이메일까지 나갔다),
+   * 반대로 phone·address 는 동의를 받아도 id_token 에만 있어 userinfo 로는 못 가져갔다.
+   */
+  private buildScopedClaims(user: User, scope: string): Record<string, any> {
+    const scopes = scope.split(' ').filter(Boolean);
+    const claims: Record<string, any> = {};
+
     if (scopes.includes('profile')) {
-      payload.name = user.name;
-      payload.nickname = user.nickname;
-      payload.picture = user.profileImageUrl;
-      payload.birthdate = user.birthDate;
+      claims.name = user.name;
+      claims.nickname = user.nickname;
+      claims.picture = user.profileImageUrl;
+      claims.birthdate = user.birthDate;
     }
-    if (scopes.includes('email')) payload.email = user.email;
-    if (scopes.includes('phone')) payload.phone_number = user.phone;
+    if (scopes.includes('email')) claims.email = user.email;
+    if (scopes.includes('phone')) claims.phone_number = user.phone;
     if (scopes.includes('address')) {
-      payload.address = {
+      claims.address = {
         // 🔴 빈 값을 그대로 이어 붙이면 «null null» 이나 앞뒤 공백이 남는다
-        formatted: [user.address, user.detailAddress].filter(Boolean).join(' '),
+        formatted: [
+          user.address,
+          user.detailAddress,
+          user.addressCity,
+          user.addressState,
+        ]
+          .filter(Boolean)
+          .join(' '),
         street_address: user.address || undefined,
         // OIDC 표준 주소에는 «상세 주소» 자리가 없다. 한국 주소는 동·호수가 따로 다뤄지고
         // 연동 서비스가 배송지 칸을 둘로 나눠 두므로 확장 키로 함께 싣는다.
         detail: user.detailAddress || undefined,
+        locality: user.addressCity || undefined,
+        region: user.addressState || undefined,
         postal_code: user.zipCode || undefined,
+        country: user.addressCountry || undefined,
       };
     }
+    return claims;
+  }
 
-    // id_token 은 1시간. issueAccessToken(15분)과 따로 정한다.
-    return this.jwtService.sign(payload, { expiresIn: '1h' });
+  /**
+   * SSO userinfo. 토큰에 실린 scope 만큼만 내려주고, 그 서비스의 관리자인지도 함께 알려준다.
+   */
+  async getUserinfo(payload: AccessTokenPayload) {
+    const user = await this.getUserById(payload.sub);
+    // 표식 없는 예전 토큰(배포 직전 발급분)은 scope 를 모른다 — 종전 동작으로 둔다.
+    const scope = payload.scope ?? 'profile email';
+
+    return {
+      sub: user.id,
+      ...this.buildScopedClaims(user, scope),
+      isServiceAdmin: payload.aud
+        ? await this.isClientAdmin(payload.aud, user.id)
+        : false,
+    };
+  }
+
+  // --- 서비스(SSO 클라이언트)별 관리자 ---
+
+  /** 그 서비스의 관리자인지. 플랫폼 전체 ADMIN 과는 별개다. */
+  async isClientAdmin(clientId: string, userId: string): Promise<boolean> {
+    return (await this.clientAdminRepo.countBy({ clientId, userId })) > 0;
+  }
+
+  async listClientAdmins(clientId: string) {
+    const rows = await this.clientAdminRepo.find({
+      where: { clientId },
+      relations: ['user'],
+      order: { createdAt: 'ASC' },
+    });
+    // 관리자 목록에 남의 ci·metadata 까지 실어 보내지 않는다.
+    return rows.map((row) => ({
+      userId: row.userId,
+      name: row.user?.name ?? null,
+      nickname: row.user?.nickname ?? null,
+      email: row.user?.email ?? null,
+      createdAt: row.createdAt,
+    }));
+  }
+
+  /** 사용자 id 또는 이메일로 지정한다(콘솔에서 uuid 를 외우게 하지 않는다). */
+  async addClientAdmin(
+    clientId: string,
+    target: { userId?: string; email?: string },
+  ) {
+    const user = target.userId
+      ? await this.userRepo.findOneBy({ id: target.userId })
+      : target.email
+        ? await this.userRepo.findOneBy({ email: target.email })
+        : null;
+    if (!user) throw new BadRequestException('사용자를 찾을 수 없습니다.');
+
+    const existing = await this.clientAdminRepo.findOneBy({
+      clientId,
+      userId: user.id,
+    });
+    if (existing) return this.listClientAdmins(clientId);
+
+    await this.clientAdminRepo.save(
+      this.clientAdminRepo.create({ clientId, userId: user.id }),
+    );
+    return this.listClientAdmins(clientId);
+  }
+
+  async removeClientAdmin(clientId: string, userId: string) {
+    await this.clientAdminRepo.delete({ clientId, userId });
+    return this.listClientAdmins(clientId);
   }
 
   private async updateGrant(userId: string, clientId: string, scope: string) {
@@ -226,7 +328,9 @@ export class AuthService {
         updated = true;
       }
       if (!user.phone && profile.phone) {
+        // 카카오·네이버가 주는 번호는 그쪽에서 본인확인이 끝난 번호다.
         user.phone = profile.phone;
+        user.phoneVerified = true;
         updated = true;
       }
       if (!user.gender && profile.gender) {
@@ -271,7 +375,9 @@ export class AuthService {
         updated = true;
       }
       if (!user.phone && profile.phone) {
+        // 카카오·네이버가 주는 번호는 그쪽에서 본인확인이 끝난 번호다.
         user.phone = profile.phone;
+        user.phoneVerified = true;
         updated = true;
       }
       if (!user.gender && profile.gender) {
@@ -307,6 +413,7 @@ export class AuthService {
           email: profile.email,
           ci: profile.ci,
           phone: profile.phone,
+          phoneVerified: Boolean(profile.phone),
           gender: profile.gender,
           birthDate: profile.birthDate,
           profileImageUrl: profile.profileImageUrl,
@@ -324,7 +431,9 @@ export class AuthService {
         updated = true;
       }
       if (!user.phone && profile.phone) {
+        // 카카오·네이버가 주는 번호는 그쪽에서 본인확인이 끝난 번호다.
         user.phone = profile.phone;
+        user.phoneVerified = true;
         updated = true;
       }
       if (!user.gender && profile.gender) {
@@ -359,22 +468,35 @@ export class AuthService {
       if (data[field] !== undefined) patch[field] = data[field] as any;
     }
 
-    // 전화번호는 소셜에서 넘어오거나 본인인증(verifyPhone)으로만 등록된다.
-    // 현재 값과 동일한 값이 함께 전송되는 경우(가입 완료 폼)만 허용하고, 그 외 변경은 거부.
+    // 닉네임은 필수 항목이지만 비워 둔 채로 넘어올 수 있다 — 그때는 이름으로 채운다.
+    // 여기서 채우지 않으면 가입 완료 판정을 통과하지 못해 가입 화면을 벗어날 수 없다.
+    if (patch.nickname !== undefined && !String(patch.nickname ?? '').trim()) {
+      const name = patch.name ?? (await this.getUserById(userId)).name;
+      patch.nickname = (name ?? '').trim();
+    }
+
+    // 전화번호는 로그인 수단이 아니라 연락처 필드다(문자 인증 로그인은 제거됐다).
+    // 본인이 자유롭게 고칠 수 있고, 형식 정규화와 중복 확인만 한다.
+    // 직접 입력한 번호는 출처가 확인되지 않았으므로 phoneVerified=false 로 내린다 —
+    // 알림톡·결제처럼 «주인이 확인된 번호»가 필요한 곳은 그 컬럼을 봐야 한다.
     if (data.phone !== undefined) {
-      const phone = String(data.phone).replace(/-/g, '');
+      const phone = parsePhone(data.phone as string);
+      if (!phone) {
+        throw new BadRequestException('전화번호 형식이 올바르지 않습니다.');
+      }
+
       const current = await this.getUserById(userId);
-      if (current.phone !== phone) {
-        throw new BadRequestException(
-          '전화번호는 본인인증을 통해서만 변경할 수 있습니다.',
-        );
+      if (phone !== current.phone) {
+        await this.assertPhoneNotTaken(userId, phone);
+        patch.phone = phone;
+        patch.phoneVerified = false;
       }
     }
 
     if (Object.keys(patch).length > 0) {
       await this.userRepo.update(userId, patch);
     }
-    return this.getUserById(userId);
+    return this.getMyProfile(userId);
   }
 
   async getSocialAccounts(userId: string) {
@@ -426,11 +548,9 @@ export class AuthService {
 
     const { id, kakao_account: account } = userRes.data;
 
-    let phone = account?.phone_number;
-    if (phone) {
-      // +82 10-0000-0000 -> 01000000000
-      phone = phone.replace('+82 ', '0').replace(/[- ]/g, '');
-    }
+    // 카카오는 '+82 10-0000-0000' 형태로 준다. 해외 계정이면 국가번호가 +82 가 아니므로
+    // 저장 형식 판단은 parsePhone 에 맡긴다(국내는 01000000000, 해외는 E.164).
+    const phone = parsePhone(account?.phone_number);
 
     let gender = account?.gender;
     if (gender === 'male') gender = 'M';
@@ -506,7 +626,7 @@ export class AuthService {
       name: name ?? null,
       nickname: nickname ?? null,
       profileImageUrl: profile_image,
-      phone: mobile ? mobile.replace(/[- ]/g, '') : null,
+      phone: parsePhone(mobile),
       gender: gender || 'U',
       birthDate,
       ci,
@@ -543,123 +663,14 @@ export class AuthService {
     };
   }
 
-  async requestCode(phone: string) {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-
-    await this.codeRepo.save(this.codeRepo.create({ phone, code, expiresAt }));
-
-    console.log(`[AUTH] Verification code for ${phone}: ${code}`);
-
-    const channelId = process.env.API_VERIFY_CHANNEL_ID;
-    const templateCode = process.env.API_VERIFY_TEMPLATE_CODE;
-
-    try {
-      if (channelId && templateCode) {
-        // 인증 전용 알림톡 템플릿이 설정된 경우 우선 사용한다.
-        await this.alimtalkService.send(
-          {
-            channelId,
-            templateCode,
-            receiverPhone: phone,
-            variables: { code },
-          },
-          { ip: '127.0.0.1', userId: '00000000-0000-0000-0000-000000000000' },
-        );
-      } else {
-        await this.aligoProvider.sendSms({
-          receiverPhone: phone,
-          message: `[파란대나무숲] 인증번호 ${code}를 입력해주세요. (5분 내 유효)`,
-        });
-      }
-    } catch (error) {
-      console.error('[AUTH] Failed to send verification code:', error.message);
-      // 운영에서는 발송 실패를 그대로 알리고, 개발 환경에서는 로그의 코드로 계속 진행할 수 있게 둔다.
-      if (
-        process.env.API_NODE_ENV === 'production' ||
-        process.env.NODE_ENV === 'production'
-      ) {
-        throw error;
-      }
-    }
-
-    return { message: '인증번호가 발송되었습니다.' };
-  }
-
-  /** 발급된 인증번호를 검증하고 1회용으로 소모한다. */
-  private async consumeVerificationCode(phone: string, code: string) {
-    const record = await this.codeRepo.findOne({
-      where: { phone, code, expiresAt: MoreThan(new Date()) },
-      order: { createdAt: 'DESC' },
-    });
-
-    if (!record)
-      throw new BadRequestException(
-        '인증번호가 올바르지 않거나 만료되었습니다.',
-      );
-
-    await this.codeRepo.remove(record);
-  }
-
-  /**
-   * 등록하려는 전화번호가 유효한지(본인 계정에 등록 가능한지) 확인한다.
-   * 인증번호 발송 전과 인증 확인 시점에 모두 사용한다.
-   */
-  private async assertPhoneAssignable(userId: string, phone: string) {
-    const user = await this.getUserById(userId);
-    if (user.phone && user.phone !== phone) {
-      throw new BadRequestException('이미 인증된 전화번호가 있습니다.');
-    }
-
+  /** 다른 계정이 이미 쓰고 있는 번호인지 확인한다. */
+  private async assertPhoneNotTaken(userId: string, phone: string) {
     const owner = await this.userRepo.findOneBy({ phone });
     if (owner && owner.id !== userId) {
       throw new BadRequestException(
         '이미 다른 계정에서 사용 중인 전화번호입니다.',
       );
     }
-
-    return user;
-  }
-
-  /** 로그인 상태에서 본인 전화번호 인증용 인증번호를 발송한다. */
-  async requestPhoneCode(userId: string, phone: string) {
-    await this.assertPhoneAssignable(userId, phone);
-    return this.requestCode(phone);
-  }
-
-  /**
-   * 로그인 상태에서 본인 전화번호를 인증해 등록한다.
-   * (소셜에서 전화번호가 넘어오지 않은 계정의 가입 완료용)
-   */
-  async verifyPhone(userId: string, phone: string, code: string) {
-    // 발송 시점 이후 다른 계정이 선점했을 수 있으므로 저장 직전에 한 번 더 확인한다.
-    const user = await this.assertPhoneAssignable(userId, phone);
-
-    await this.consumeVerificationCode(phone, code);
-
-    user.phone = phone;
-    await user.save();
-    return user;
-  }
-
-  async verifyCode(
-    phone: string,
-    code: string,
-  ): Promise<{ user: User; accessToken: string; refreshToken: string }> {
-    await this.consumeVerificationCode(phone, code);
-
-    let user = await this.userRepo.findOneBy({ phone });
-    if (!user) {
-      user = await this.userRepo.save(
-        this.userRepo.create({ phone, name: '사용자' }),
-      );
-    }
-
-    return {
-      user,
-      accessToken: this.issueAccessToken(user.id),
-      refreshToken: await this.issueRefreshToken(user.id),
-    };
   }
 
   async refresh(
@@ -671,6 +682,14 @@ export class AuthService {
 
     if (!record)
       throw new UnauthorizedException('유효하지 않은 리프레시 토큰입니다.');
+
+    // SSO 교환으로 나간 리프레시 토큰으로는 브라우저 세션을 만들 수 없다.
+    // 연동 서비스는 만료되면 authorize 를 다시 태워야 한다.
+    if (record.clientId) {
+      throw new UnauthorizedException(
+        '세션 갱신에 사용할 수 없는 토큰입니다.',
+      );
+    }
 
     // Rotate: 기존 토큰 삭제 후 새로 발급
     await this.refreshTokenRepo.remove(record);
@@ -685,21 +704,76 @@ export class AuthService {
     await this.refreshTokenRepo.delete({ token });
   }
 
+  /**
+   * 본인에게 내려주는 프로필.
+   *
+   * 엔티티를 그대로 반환하면 `ci`(본인확인 고유값)·`stripeCustomerId`·`metadata`(운영자 자유 필드)까지
+   * 브라우저로 나간다. 본인 데이터라 유출은 아니지만 프론트가 쓸 일이 없는 값들이라 골라서 내린다.
+   * (`roles` 는 관리 콘솔의 ADMIN 판정에 실제로 쓰이므로 포함한다.)
+   */
+  async getMyProfile(userId: string) {
+    const u = await this.getUserById(userId);
+    return {
+      id: u.id,
+      email: u.email,
+      name: u.name,
+      nickname: u.nickname,
+      profileImageUrl: u.profileImageUrl,
+      birthDate: u.birthDate,
+      gender: u.gender,
+      phone: u.phone,
+      phoneVerified: u.phoneVerified,
+      zipCode: u.zipCode,
+      address: u.address,
+      detailAddress: u.detailAddress,
+      addressCountry: u.addressCountry,
+      addressCity: u.addressCity,
+      addressState: u.addressState,
+      company: u.company,
+      roles: u.roles,
+      status: u.status,
+      createdAt: u.createdAt,
+    };
+  }
+
   async getUserById(id: string): Promise<User> {
     const user = await this.userRepo.findOneBy({ id });
     if (!user) throw new UnauthorizedException('사용자를 찾을 수 없습니다.');
     return user;
   }
 
-  private issueAccessToken(userId: string): string {
-    return this.jwtService.sign({ sub: userId }, { expiresIn: '15m' });
+  /**
+   * 액세스 토큰. `sso` 를 주면 연동 서비스용 토큰으로 표식(typ/aud/scope)을 붙인다.
+   * 표식이 없는 토큰은 브라우저 세션 토큰이다.
+   */
+  private issueAccessToken(
+    userId: string,
+    sso?: { clientId: string; scope: string },
+  ): string {
+    const payload = sso
+      ? { sub: userId, typ: SSO_TOKEN_TYPE, aud: sso.clientId, scope: sso.scope }
+      : { sub: userId };
+    return this.jwtService.sign(payload, { expiresIn: '15m' });
   }
 
-  private async issueRefreshToken(userId: string): Promise<string> {
+  /**
+   * 리프레시 토큰. SSO 교환으로 발급한 것은 `clientId` 를 남겨 세션용과 구분한다 —
+   * 구분하지 않으면 연동 서비스가 이 토큰을 쿠키에 실어 `POST /auth/refresh` 로
+   * 세션 액세스 토큰을 받아낼 수 있다(액세스 토큰에 표식을 붙인 의미가 사라진다).
+   */
+  private async issueRefreshToken(
+    userId: string,
+    clientId?: string,
+  ): Promise<string> {
     const token = randomBytes(40).toString('hex');
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
     await this.refreshTokenRepo.save(
-      this.refreshTokenRepo.create({ token, userId, expiresAt }),
+      this.refreshTokenRepo.create({
+        token,
+        userId,
+        expiresAt,
+        clientId: clientId ?? null,
+      }),
     );
     return token;
   }

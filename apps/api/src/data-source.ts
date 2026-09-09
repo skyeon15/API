@@ -11,6 +11,7 @@ import { RefreshToken } from './auth/entities/refresh-token.entity.js';
 import { UserSocialAccount } from './auth/entities/user-social-account.entity.js';
 import { OauthClient } from './auth/entities/oauth-client.entity.js';
 import { OauthGrant } from './auth/entities/oauth-grant.entity.js';
+import { OauthClientAdmin } from './auth/entities/oauth-client-admin.entity.js';
 import { AuditLog } from './audit/entities/audit-log.entity.js';
 import { AlimtalkChannel } from './alimtalk/entities/channel.entity.js';
 import { AlimtalkTemplate } from './alimtalk/entities/template.entity.js';
@@ -38,6 +39,7 @@ export const AppDataSource = new DataSource({
     UserSocialAccount,
     OauthClient,
     OauthGrant,
+    OauthClientAdmin,
     AuditLog,
     AlimtalkChannel,
     AlimtalkTemplate,

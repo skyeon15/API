@@ -56,17 +56,62 @@ export class SsoUserinfoResponseDto {
   @ApiProperty({ description: '사용자 고유 ID (UUID)' })
   sub: string;
 
-  @ApiProperty({ description: '이름', nullable: true })
-  name: string;
+  @ApiProperty({
+    description: '이름 (scope: profile)',
+    nullable: true,
+    required: false,
+  })
+  name?: string;
 
-  @ApiProperty({ description: '닉네임', nullable: true })
-  nickname: string;
+  @ApiProperty({
+    description: '닉네임 (scope: profile)',
+    nullable: true,
+    required: false,
+  })
+  nickname?: string;
 
-  @ApiProperty({ description: '이메일', nullable: true })
-  email: string;
+  @ApiProperty({
+    description: '프로필 이미지 URL (scope: profile)',
+    nullable: true,
+    required: false,
+  })
+  picture?: string;
 
-  @ApiProperty({ description: '프로필 이미지 URL', nullable: true })
-  picture: string;
+  @ApiProperty({
+    description: '생년월일 YYYY-MM-DD (scope: profile)',
+    nullable: true,
+    required: false,
+  })
+  birthdate?: string;
+
+  @ApiProperty({
+    description: '이메일 (scope: email)',
+    nullable: true,
+    required: false,
+  })
+  email?: string;
+
+  @ApiProperty({
+    description: '전화번호 (scope: phone). 국내는 01012345678, 해외는 E.164',
+    nullable: true,
+    required: false,
+  })
+  phone_number?: string;
+
+  @ApiProperty({
+    description:
+      '주소 (scope: address). formatted/street_address/detail/locality/region/postal_code/country',
+    required: false,
+    type: Object,
+  })
+  address?: Record<string, string | undefined>;
+
+  @ApiProperty({
+    description:
+      '이 사용자가 **해당 서비스의 관리자**인지. 플랫폼 전체 관리자와는 별개이며, 플랫폼 관리 콘솔에서 서비스별로 지정한다',
+    example: false,
+  })
+  isServiceAdmin: boolean;
 }
 
 export class SsoClientInfoResponseDto {
