@@ -66,6 +66,39 @@ export class StripeService {
     return c;
   }
 
+  /**
+   * 카드 명세서에 붙일 꼬리표를 Stripe 규칙에 맞게 다듬는다.
+   *
+   * 플랫폼이 **MoR**라 명세서 앞머리는 언제나 우리 법인 이름(계정 프리픽스 `BLUEBAMBOO`)이다 —
+   * 후원자·구매자는 그것만 보고 **어느 서비스에 낸 돈인지 알 수가 없고**, 그게 분쟁(차지백)의
+   * 첫째 원인이다. 그래서 연동 서비스가 자기 이름을 꼬리에 붙인다.
+   *
+   * 규칙은 Stripe가 정한다 — 전체(프리픽스 + `* ` + 꼬리)가 **22자 이내**, 라틴 문자,
+   * `< > \ ' " *` 금지. 지금 계정 프리픽스가 10자(허용 최대)라 **꼬리에 남는 자리가 10자**다.
+   * 대시보드에서 프리픽스를 줄이면 그만큼 늘어나므로, 늘릴 생각이면 여기 상수도 함께 올릴 것.
+   *
+   * 🔴 **Stripe는 긴 꼬리표를 거부하지 않는다**(2026-09-18 실측: 20자 꼬리표도 PaymentIntent가
+   *    그냥 만들어진다). 잘리는 것은 명세서에 찍힐 때라 **증상이 에러가 아니라 «이상한 이름»**이고
+   *    개발 중에는 눈에 띄지도 않는다 — 그래서 여기서 먼저 자른다.
+   *
+   * 🔴 **카드 결제에만 붙는다.** 카카오페이·네이버페이처럼 카드가 아닌 수단은 계정 기본
+   *    명세서(`BLUEBAMBOOFOREST INC.`)가 그대로 나간다 — 꼬리표로 덮을 수 없다.
+   */
+  private static readonly STATEMENT_SUFFIX_MAX = 10;
+
+  private normalizeStatementSuffix(raw?: string): string | undefined {
+    if (!raw) return undefined;
+    const cleaned = String(raw)
+      .replace(/[<>\\'"*]/g, ' ') // Stripe 금지 문자
+      .replace(/[^\x20-\x7E]/g, ' ') // 라틴 밖(한글 등)은 Stripe가 거절한다
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, StripeService.STATEMENT_SUFFIX_MAX)
+      .trim();
+    // 글자가 하나도 없으면 **안 보내는 게** 맞다 — 빈 값은 400이라 결제 자체가 막힌다.
+    return /[A-Za-z]/.test(cleaned) ? cleaned : undefined;
+  }
+
   // ── Stripe Customer 확보 (사용자당 1개 재사용) ──────────────────────────────
   private async ensureCustomer(user: User): Promise<string> {
     if (user.stripeCustomerId) return user.stripeCustomerId;
@@ -364,6 +397,18 @@ export class StripeService {
         existing.label = opts.label;
         await this.serviceCustomerRepo.save(existing);
       }
+      // 🔴 영수증 주소는 Customer 에 달려 있다. **만들 때만** 넣으면 그 전에 생긴 손님은
+      //    영영 영수증을 못 받는다(메일 주소는 대개 나중에 알게 된다).
+      //    실패해도 삼킨다 — 영수증 때문에 결제가 막히는 쪽이 더 나쁘다.
+      if (opts.email) {
+        await this.stripe.customers
+          .update(existing.stripeCustomerId, { email: opts.email })
+          .catch((err: any) =>
+            this.logger.warn(
+              `Stripe Customer 이메일 갱신 실패(${existing.stripeCustomerId}): ${err?.message}`,
+            ),
+          );
+      }
       return existing;
     }
 
@@ -531,6 +576,7 @@ export class StripeService {
       externalOrderId?: string;
       label?: string;
       email?: string;
+      statementDescriptorSuffix?: string;
     },
   ) {
     if (!data.amount || data.amount <= 0) {
@@ -552,11 +598,20 @@ export class StripeService {
         })
       : null;
 
+    const statementSuffix = this.normalizeStatementSuffix(
+      data.statementDescriptorSuffix,
+    );
+
     const paymentIntent = await this.stripe.paymentIntents.create({
       amount: data.amount,
       currency,
       ...(sc ? { customer: sc.stripeCustomerId } : {}),
       description: data.goodName,
+      // 영수증은 **MoR인 우리가** 낸다. 주소를 주면 대시보드 설정과 무관하게 발송된다.
+      ...(data.email ? { receipt_email: data.email } : {}),
+      ...(statementSuffix
+        ? { statement_descriptor_suffix: statementSuffix }
+        : {}),
       automatic_payment_methods: { enabled: true },
       setup_future_usage: data.savePaymentMethod ? 'off_session' : undefined,
       metadata: {
@@ -615,6 +670,8 @@ export class StripeService {
       goodName: string;
       externalOrderId?: string;
       memo?: string;
+      email?: string;
+      statementDescriptorSuffix?: string;
     },
   ) {
     const sc = await this.requireServiceCustomer(
@@ -633,6 +690,9 @@ export class StripeService {
     }
     const currency = this.normalizeCurrency(data.currency);
     const orderId = generateOrderId();
+    const statementSuffix = this.normalizeStatementSuffix(
+      data.statementDescriptorSuffix,
+    );
 
     const tx = this.txRepo.create({
       userId: serviceUserId,
@@ -663,6 +723,11 @@ export class StripeService {
         off_session: true,
         confirm: true,
         description: data.goodName,
+        // 사람이 화면에 없는 청구다 — 영수증이 «이번 달도 빠져나갔다»를 알리는 유일한 창구다.
+        ...(data.email ? { receipt_email: data.email } : {}),
+        ...(statementSuffix
+          ? { statement_descriptor_suffix: statementSuffix }
+          : {}),
         metadata: {
           userId: serviceUserId,
           orderId,

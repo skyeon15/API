@@ -64,6 +64,14 @@ export class CreateServicePaymentIntentDto {
 
   @ApiProperty({ description: '영수증 받을 이메일', required: false })
   email?: string;
+
+  @ApiProperty({
+    description:
+      '카드 명세서 꼬리표. 계정 프리픽스 뒤에 `* ` 로 이어 붙는다(라틴 문자, 남는 자리만큼만). 카드 결제에만 붙는다',
+    required: false,
+    example: 'EKE DONATE',
+  })
+  statementDescriptorSuffix?: string;
 }
 
 export class ChargeServiceCardDto {
@@ -87,6 +95,16 @@ export class ChargeServiceCardDto {
 
   @ApiProperty({ description: '메모', required: false })
   memo?: string;
+
+  @ApiProperty({ description: '영수증 받을 이메일', required: false })
+  email?: string;
+
+  @ApiProperty({
+    description: '카드 명세서 꼬리표(일회성 결제와 같은 규칙)',
+    required: false,
+    example: 'EKE DONATE',
+  })
+  statementDescriptorSuffix?: string;
 }
 
 export class UpsertServiceWebhookDto {

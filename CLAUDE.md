@@ -102,6 +102,16 @@
   - Stripe Customer는 사용자당 1개 재사용: `User.stripeCustomerId` (없으면 저장카드 레코드에서 백필 후 저장)
   - 웹훅 `/webhooks/stripe` — **일회성 결제의 PENDING→PAID 전환은 전적으로 웹훅 의존**. Stripe 대시보드에 엔드포인트 등록 필수, 서명 시크릿은 Doppler `API_STRIPE_WEBHOOK_SECRET`. rawBody 필요(`main.ts`에서 `rawBody: true`)
   - 공개 비즈니스 정보(영수증 연락처)·결제수단 활성화(capability)는 **본인 계정 API 수정 불가** — 대시보드에서만 변경
+  - **명세서 꼬리표(`statementDescriptorSuffix`)**: MoR라 명세서 앞머리가 언제나 우리 법인
+    (계정 프리픽스 `BLUEBAMBOO`)이라 구매자가 «어느 서비스에 낸 돈»인지 못 읽는다 = 차지백의 첫째 원인.
+    그래서 서비스가 꼬리표를 넘긴다(`/service/stripe/payment-intent`·`/charge`).
+    `normalizeStatementSuffix`가 Stripe 규칙(라틴, `< > \ ' " *` 금지, 전체 22자)으로 다듬고
+    **`STATEMENT_SUFFIX_MAX`(=10, 22 − 프리픽스 10 − `* `)로 자른다** — Stripe는 긴 꼬리표를
+    **거부하지 않으므로**(2026-09-18 실측) 안 자르면 명세서에서 조용히 잘린다 — 프리픽스를 대시보드에서
+    줄이면 이 상수도 함께 올릴 것. 🔴 **카드에만 붙는다**(카카오페이·네이버페이는 기본 명세서)
+  - **영수증(`email` → `receipt_email`)**: 주소를 주면 Stripe가 대신 보낸다. `ensureServiceCustomer`는
+    **이미 있는 손님도 주소를 주면 갱신**한다 — 만들 때만 넣으면 그 전에 생긴 손님은 영영 못 받는다.
+    갱신 실패는 삼킨다(영수증 때문에 결제를 막지 않는다)
   - **결제수단 목록은 대시보드 설정을 따름**(card/link/kr_card/kakao_pay/naver_pay/amazon_pay). 코드에서 `payment_method_types`를 고정하지 않음
   - **리다이렉트형 수단(네이버페이 등)**: `confirmSetup`/`confirmPayment`에 `return_url` **필수**(`redirect: 'if_required'`여도 필수). 복귀 전용 라우트 `apps/web/src/app/stripe/return/page.tsx` — `setup_intent`면 카드저장 확정 API 호출, `payment_intent`면 결과 안내(거래 상태 반영은 웹훅). `next`는 내부 경로만 허용(오픈 리다이렉트 차단). 카드는 이탈이 없어 이 라우트를 거치지 않음
   - **네이버페이는 카드번호·브랜드를 주지 않음**. 확보 가능한 건 `type`/`buyer_id`(동일 계정 식별 해시)/`funding`(card|points) + SetupIntent의 `mandate`뿐 → `payment_methods.pmType`(varchar) + `pmDetail`(jsonb)에 저장. 카드는 `pmDetail`에 brand/last4/funding/country/exp*. 프론트는 `pmType !== 'card'`일 때 `cardNo`(`****`) 대신 funding·buyerId를 표기
