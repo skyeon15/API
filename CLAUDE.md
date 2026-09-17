@@ -128,8 +128,52 @@ API 한 곳에 두고 내려 준다(`users/stripe-config.controller.ts`).
 - 각 서비스 = 플랫폼 사용자(API 키 소유자). 서비스가 자기 API 키로 결제 API를 호출하면 거래가 그 서비스의 userId로 귀속 → **서비스별 정산 집계가 자동**
 - 일회성 결제 흐름: 서비스 백엔드 `POST /profile/stripe/payment-intent`(API 키) → `clientSecret`·`orderId`·`transactionId` 수령 → 서비스 프론트가 플랫폼 publishable key로 confirm → 플랫폼 웹훅이 PAID 동기화 → 서비스는 `GET /profile/payments/transactions?externalOrderId=...`로 조회
 - **`externalOrderId`**: 서비스측 주문번호. payment-intent 생성 시 받아 Stripe metadata + `payment_transactions.externalOrderId`(인덱스)에 저장 — 서비스측 대사(reconciliation)용
-- **금지 패턴**: 서비스 API 키로 **최종 사용자의 카드 저장·빌링** 대행. 모든 최종 사용자 카드가 키 소유자 1명의 Customer에 섞여 카드-사용자 매핑 오류 시 플랫폼이 오청구를 막을 수 없음. 최종 사용자 빌링이 필요해지면 `externalUserId` 단위 Customer 분리를 먼저 구현할 것
-- 미구현(계획): 결제 완료 시 플랫폼→서비스 콜백 웹훅. 현재는 서비스가 거래 조회로 확인
+- **금지 패턴**: `/profile/stripe/*`(= 키 소유자 본인 경로)로 **최종 사용자의 카드 저장·빌링** 대행. 모든 최종 사용자 카드가 키 소유자 1명의 Customer에 섞여 카드-사용자 매핑 오류 시 플랫폼이 오청구를 막을 수 없음. **최종 사용자 빌링은 `/service/stripe/*`(아래)로 간다** — `externalUserId` 단위 Customer 분리가 거기서 끝났다
+- 결제 완료 통지는 **플랫폼→서비스 콜백 웹훅**(아래)이다. 거래 조회(`GET /profile/payments/transactions`)는 대사용으로 남는다
+
+### 연동 서비스의 최종 사용자 — `/service/stripe/*` (`users/service-stripe.controller.ts`)
+
+플랫폼 계정이 **없는** 손님의 Stripe 결제·정기결제. 후원 페이지처럼 «그 서비스에만 로그인한
+사람»이 카드를 다는 자리다.
+
+- **왜 `/profile/stripe/*` 로는 안 되나**: 거기는 카드를 `payment_methods.userId` = 부른 사람으로
+  단다. 서비스 API 키로 부르면 **손님 카드가 전부 키 소유자 한 명의 Customer 에 붙는다** —
+  위 «금지 패턴»이다. 여기서는 `service_customers(serviceUserId, externalUserId)` 마다 Stripe
+  Customer 를 따로 세우고, 카드는 `payment_methods.serviceCustomerId` 로 갈린다
+  (그래서 `payment_methods.userId` 가 **nullable 이 됐다** — 둘 중 하나만 찬다)
+- **`externalUserId`** 는 서비스가 부르는 자기 사용자 id 다. 플랫폼은 뜻을 모르고 그대로 되돌려
+  준다 — 같은 문자열이라도 **서비스가 다르면 남남**이다(유니크가 두 칸 묶음인 이유)
+- **자격은 서비스 API 키 하나뿐**이다. `/sso/payments` 와 달리 사용자 토큰이라는 것이 아예 없다
+  (손님에게 플랫폼 계정이 없다). 서비스가 자기 손님을 인증했다고 **믿는 대신**, 카드가
+  `serviceCustomerId` 로 갈려 있어 남의 서비스 손님에게는 닿지 않는다
+- 정산 귀속은 그대로 **서비스**다 — `payment_transactions.userId` = 키 소유자. 새 칸
+  `serviceCustomerId`·`externalUserId`(인덱스)가 «그 서비스의 누구»를 가리킨다. 두 축을 헷갈리지 말 것
+- 흐름: `POST setup-intent` → 프론트 `confirmSetup` → `POST payment-methods`(확정) →
+  매달 `POST charge`. 일회성은 `POST payment-intent` 하나이고 **`externalUserId` 를 안 주면
+  Customer 없이** 만든다(익명 결제 — 서비스 소유자 Customer 에 남의 결제를 달지 않는다).
+  `savePaymentMethod` 는 `externalUserId` 없이는 **거부**한다(카드의 임자가 없다)
+- 🔴 `billingKey`(pm_xxx)는 목록 응답에서 뺀다(`/sso/payments` 와 같은 규칙). 카드 해지는
+  Stripe `detach` 까지 한다 — 안 떼면 고객의 Link 화면에 계속 남는다
+
+### 플랫폼 → 서비스 콜백 웹훅 (`users/service-webhook.service.ts`)
+
+결제 결과를 서비스에 되돌려 준다. 구독 단위는 **서비스(=API 키 소유자)** 이고 표는
+`service_webhooks` 다 — `api_keys` 에 매달면 키를 갈아끼울 때마다 웹훅이 조용히 끊긴다.
+
+- 등록·조회·삭제: `GET/POST/DELETE /service/stripe/webhooks`. **시크릿은 만든 직후 한 번만**
+  평문으로 나간다(목록에는 없다). `url` 은 **https 강제** — 서명이 있어도 금액·후원자가 평문으로 흐른다
+- 이벤트 셋: `payment.paid` · `payment.failed` · `payment.refunded`. `events` 가 **빈 배열이면 전부** 받는다
+- 서명은 Stripe 와 같은 모양 `X-PDS-Signature: t=<초>,v1=<hex>` 이고 서명 대상은 **`${t}.${body}`** 다
+  (타임스탬프를 빼면 지난 요청을 그대로 되쏠 수 있다). 받는 쪽 기준 구현은
+  `ServiceWebhookService.verify()` — 허용 오차 300초
+- 🔴 **배달은 던지지도 기다리지도 않는다.** 부르는 자리가 Stripe 웹훅 처리 한가운데라, 여기서
+  예외가 나면 플랫폼이 Stripe 에 5xx 를 돌려주고 **Stripe 가 같은 이벤트를 다시 쏜다** —
+  남의 서버가 죽은 것 때문에 우리 동기화가 되풀이된다. 재시도는 0s·5s·30s 세 번이고
+  마지막 결과만 `service_webhooks.lastStatus/lastError` 에 남는다
+- 🔴 **`dispatchOnce`**: 같은 거래가 두 길로 확정된다 — off_session 청구는 응답에서 곧장 PAID 가
+  되고 잠시 뒤 Stripe 웹훅이 같은 결과를 또 들고 온다. `rawResponse.dispatched` 표식이 없으면
+  서비스가 같은 결제를 **두 번 적는다**. 반대로 정기결제 청구에서 `chargeServiceCard` 가 직접
+  쏘지 않으면 **아예 못 받는다** — 웹훅이 와도 이미 PAID 라 `syncPaymentIntent` 의 전이 조건에 안 걸린다
 
 ### 연동 서비스 정기결제 — `/sso/payments/*` (`users/sso-payment.controller.ts`)
 
@@ -185,7 +229,30 @@ allowedScopes 를 검사해야 한다. 🔴 지금 켜면 **allowedScopes 가 �
 ## 컨벤션·함정
 
 - **Swagger CLI 플러그인 금지**: api가 ESM이라 플러그인이 require 주입으로 부팅을 깨뜨림. DTO + `@ApiProperty`로 직접 명세할 것
+- 🔴 **엔티티끼리 서로 import 하면 `Relation<>`을 쓸 것** (ESM + `emitDecoratorMetadata` 함정).
+  양방향 관계(`@OneToMany` ↔ `@ManyToOne`)는 두 파일이 서로를 import 하는데, `paymentMethod: PaymentMethod`
+  같은 **단수 속성**은 `__metadata("design:type", PaymentMethod)`로 컴파일돼 클래스를 **즉시** 참조한다.
+  나중에 평가되는 쪽이 TDZ에 걸려 `ReferenceError: Cannot access 'X' before initialization`으로
+  **부팅이 통째로 죽는다**(2026-09-17 `payment_method_usages` 배포가 이걸로 실패했다. 증상이
+  «헬스체크 unhealthy → 롤백»이라 원인이 안 보이고, 컨테이너 로그를 봐야 한 줄이 나온다).
+  - 고치는 법: `import type { Relation } from 'typeorm'` + `paymentMethod: Relation<PaymentMethod>`.
+    design:type이 `Object`로 떨어져 고리가 끊긴다
+  - **배열 쪽(`usages: PaymentMethodUsage[]`)은 안전하다** — design:type이 `Array`다.
+    `() => PaymentMethod` 화살표도 지연 호출이라 안전하다. 터지는 건 **단수 속성 한 줄**뿐이다
+  - **타입체크로는 안 잡힌다**(`tsc --noEmit` 통과한다). 빌드 전에 확인하려면 컴파일 후
+    그 모듈을 실제로 import 해 볼 것
+- 🔴 **엔티티를 새로 만들면 세 곳에 등록할 것** — `TypeOrmModule.forFeature([...])`(모듈),
+  **`app.module.ts` 의 `entities: [...]`**, **`data-source.ts` 의 `entities: [...]`**.
+  뒤 둘은 **글롭이 아니라 명시적 배열**이라 빠뜨리기 쉽고, 빠뜨리면 `tsc` 도 `forFeature` 도
+  통과한 채 **부팅에서** `TypeORMError: Entity metadata for X#y was not found` 로 죽는다
+  (2026-09-17 배포 실패. `app.module.ts` 만 고치고 `data-source.ts` 를 빠뜨리면 앱은 뜨는데
+  `npm run typeorm` 계열 CLI 만 깨져 더 늦게 발견된다)
 - 마이그레이션은 raw SQL `queryRunner.query()` 스타일, 파일명 `<timestamp>-<Name>.ts`, 클래스 `name` 필드 필수
+- **배포 전에 «부팅 단계»를 따로 확인할 것.** 위 두 함정(순환 import·엔티티 미등록)은 모두
+  `tsc --noEmit` 을 통과하고 **컨테이너를 띄워야만** 드러난다. 시크릿 없이 확인하는 법:
+  prd 스키마를 `pg_dump --schema-only` 로 뜬 임시 DB에 `migrations` 행까지 복사한 뒤,
+  컴파일된 엔티티로 `app.module` 과 같은 목록의 `DataSource` 를 `migrationsRun: true` 로
+  initialize 해 본다. 엔티티 메타데이터 빌드·마이그레이션·관계 질의가 한 번에 걸린다
 - `amount`는 최소 화폐단위 정수(KRW는 원 단위 그대로), `currency`는 ISO 4217 소문자
 - CORS 전 오리진 허용 + credentials — 외부 서비스 프론트 직접 호출 가능하나 장기적으로 화이트리스트 전환 검토
 - **Stripe 카드저장은 웹훅이 프론트 콜백을 선점한다**: `setup_intent.succeeded` 웹훅(운영 배포본이 수신)이 프론트의 저장 확정 API보다 먼저 도착해 행을 만드는 경우가 많음(실측 3초). 따라서 **저장 로직을 프론트/dev에서만 고쳐도 반영되지 않고 운영 배포가 선행돼야 함**. `persistSavedCard`는 기존 행 발견 시 `pmDetail`이 비었으면 Stripe 조회로 자가 보정(`backfillPmDetail`)

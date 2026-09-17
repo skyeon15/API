@@ -6,22 +6,35 @@ import {
   UpdateDateColumn,
   BaseEntity,
   ManyToOne,
+  OneToMany,
   JoinColumn,
 } from 'typeorm';
 import { User } from '../../users/entities/user.entity.js';
 import { PayappSeller } from './payapp-seller.entity.js';
+import { PaymentMethodUsage } from './payment-method-usage.entity.js';
+import { ServiceCustomer } from './service-customer.entity.js';
 
 @Entity('payment_methods')
 export class PaymentMethod extends BaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
-  userId: string;
+  // 플랫폼 계정의 카드면 그 사람. **연동 서비스 손님의 카드면 비어 있고**
+  // 대신 `serviceCustomerId` 가 찬다(둘 중 하나는 반드시 있다).
+  @Column({ type: 'uuid', nullable: true })
+  userId: string | null;
 
-  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'userId' })
-  user: User;
+  user: User | null;
+
+  // 연동 서비스의 최종 사용자(= 그 사람 전용 Stripe Customer). PayApp 미사용
+  @Column({ type: 'uuid', nullable: true })
+  serviceCustomerId: string | null;
+
+  @ManyToOne(() => ServiceCustomer, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'serviceCustomerId' })
+  serviceCustomer: ServiceCustomer | null;
 
   @Column({ type: 'varchar', default: 'payapp' })
   provider: string; // 'payapp' | 'stripe'
@@ -59,6 +72,9 @@ export class PaymentMethod extends BaseEntity {
 
   @Column({ type: 'varchar', nullable: true })
   memo: string | null; // 내부 관리용 메모
+
+  @OneToMany(() => PaymentMethodUsage, (usage) => usage.paymentMethod)
+  usages: PaymentMethodUsage[];
 
   @CreateDateColumn()
   createdAt: Date;

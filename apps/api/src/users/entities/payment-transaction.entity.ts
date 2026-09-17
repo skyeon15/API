@@ -65,6 +65,15 @@ export class PaymentTransaction extends BaseEntity {
   @Column({ type: 'varchar', nullable: true })
   externalOrderId: string | null; // 호출 서비스측 주문번호 (대사용)
 
+  // 연동 서비스의 최종 사용자. `userId`(=서비스)와 다른 축이다 —
+  // 정산은 서비스로, «누가 냈나» 는 이쪽으로 본다.
+  @Column({ type: 'uuid', nullable: true })
+  serviceCustomerId: string | null;
+
+  @Index()
+  @Column({ type: 'varchar', nullable: true })
+  externalUserId: string | null;
+
   @Column({ type: 'varchar', nullable: true })
   mulNo: string | null; // 페이앱 결제요청번호
 

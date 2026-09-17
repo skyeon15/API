@@ -23,11 +23,14 @@ import { SsoScopes } from '../common/decorators/sso-scope.decorator.js';
 import { Service } from '../common/decorators/service.decorator.js';
 import { PayappSeller } from './entities/payapp-seller.entity.js';
 import { PaymentMethod } from './entities/payment-method.entity.js';
+import { PaymentMethodUsage } from './entities/payment-method-usage.entity.js';
 import { User } from './entities/user.entity.js';
 import { PaymentService } from './payment.service.js';
 import {
+  AddPaymentMethodUsageDto,
   ChargeClientCardDto,
   RegisterClientCardDto,
+  RemovePaymentMethodUsageDto,
 } from './dto/sso-payment.dto.js';
 
 /**
@@ -57,6 +60,8 @@ export class SsoPaymentController {
     private readonly sellerRepo: Repository<PayappSeller>,
     @InjectRepository(PaymentMethod)
     private readonly paymentRepo: Repository<PaymentMethod>,
+    @InjectRepository(PaymentMethodUsage)
+    private readonly usageRepo: Repository<PaymentMethodUsage>,
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly paymentService: PaymentService,
@@ -175,6 +180,7 @@ export class SsoPaymentController {
     const seller = await this.resolveSeller(req['ssoClientId']);
     const methods = await this.paymentRepo.find({
       where: { userId, sellerId: seller.id, isActive: true },
+      relations: ['usages'],
       order: { createdAt: 'DESC' },
     });
     // 🔴 빌링키(`billingKey`)는 내려보내지 않는다. 서비스가 들고 있을 이유가 없고,
@@ -184,7 +190,96 @@ export class SsoPaymentController {
       cardNo: m.cardNo,
       cardName: m.cardName,
       createdAt: m.createdAt,
+      usages: (m.usages ?? []).map((u) => ({
+        id: u.id,
+        clientId: u.clientId,
+        label: u.label,
+        externalId: u.externalId,
+        createdAt: u.createdAt,
+      })),
     }));
+  }
+
+  @Post('methods/:id/usages')
+  @UseGuards(SsoScopeGuard)
+  @SsoScopes('payment')
+  @ApiOperation({ summary: '카드를 정기 결제/구독 사용처로 등록(바인딩)' })
+  async addUsage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: AddPaymentMethodUsageDto,
+  ) {
+    const userId = this.getUserId(req);
+    const clientId = req['ssoClientId'];
+    const seller = await this.resolveSeller(clientId);
+    const method = await this.paymentRepo.findOneBy({
+      id,
+      userId,
+      sellerId: seller.id,
+      isActive: true,
+    });
+    if (!method) throw new NotFoundException('등록된 카드를 찾을 수 없습니다.');
+
+    if (!body?.label?.trim()) {
+      throw new BadRequestException('사용처 라벨(label)을 입력해주세요.');
+    }
+
+    const externalId = body.externalId?.trim() || null;
+    let usage = await this.usageRepo.findOneBy({
+      paymentMethodId: id,
+      clientId,
+      externalId: externalId ?? undefined,
+    });
+
+    if (!usage) {
+      usage = this.usageRepo.create({
+        paymentMethodId: id,
+        clientId,
+        label: body.label.trim(),
+        externalId,
+      });
+    } else {
+      usage.label = body.label.trim();
+    }
+
+    await this.usageRepo.save(usage);
+    return { success: true, usageId: usage.id };
+  }
+
+  @Delete('methods/:id/usages')
+  @UseGuards(SsoScopeGuard)
+  @SsoScopes('payment')
+  @ApiOperation({ summary: '카드의 정기 결제/구독 사용처 등록 해제' })
+  async removeUsage(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Query('externalId') externalId?: string,
+  ) {
+    const userId = this.getUserId(req);
+    const clientId = req['ssoClientId'];
+    const seller = await this.resolveSeller(clientId);
+    const method = await this.paymentRepo.findOneBy({
+      id,
+      userId,
+      sellerId: seller.id,
+    });
+    if (!method) throw new NotFoundException('등록된 카드를 찾을 수 없습니다.');
+
+    const cleanExtId = externalId?.trim() || null;
+    if (cleanExtId) {
+      await this.usageRepo.delete({
+        paymentMethodId: id,
+        clientId,
+        externalId: cleanExtId,
+      });
+    } else {
+      await this.usageRepo.delete({
+        paymentMethodId: id,
+        clientId,
+      });
+    }
+
+    return { success: true };
   }
 
   @Delete('methods/:id')
@@ -200,6 +295,17 @@ export class SsoPaymentController {
       sellerId: seller.id,
     });
     if (!method) throw new NotFoundException('등록된 카드를 찾을 수 없습니다.');
+
+    // 🔴 사용 중인 카드는 삭제를 거부한다.
+    // 다른 서비스나 해당 서비스에서 구독 중인 카드가 임의로 삭제되어 정기결제가 파탄나는 것을 막는다.
+    const usages = await this.usageRepo.find({ where: { paymentMethodId: id } });
+    if (usages.length > 0) {
+      const labels = usages.map((u) => u.label).join(', ');
+      throw new BadRequestException(
+        `이 카드는 현재 [${labels}] 정기 결제에 사용 중이므로 삭제할 수 없습니다. 해당 서비스에서 결제 카드를 변경하거나 구독을 해지한 후 삭제해 주세요.`,
+      );
+    }
+
     method.isActive = false;
     await this.paymentRepo.save(method);
     return { success: true };

@@ -15,6 +15,8 @@ import {
   PaymentProvider,
 } from './entities/payment-transaction.entity.js';
 import { User, UserRole } from './entities/user.entity.js';
+import { ServiceCustomer } from './entities/service-customer.entity.js';
+import { ServiceWebhookService } from './service-webhook.service.js';
 
 // 카드가 아닌 저장 수단(간편결제)의 표시명
 const WALLET_LABELS: Record<string, string> = {
@@ -40,6 +42,9 @@ export class StripeService {
     private readonly paymentRepo: Repository<PaymentMethod>,
     @InjectRepository(PaymentTransaction)
     private readonly txRepo: Repository<PaymentTransaction>,
+    @InjectRepository(ServiceCustomer)
+    private readonly serviceCustomerRepo: Repository<ServiceCustomer>,
+    private readonly webhooks: ServiceWebhookService,
   ) {}
 
   private get stripe(): Stripe {
@@ -333,6 +338,378 @@ export class StripeService {
     }
   }
 
+  // ── 연동 서비스의 최종 사용자 (externalUserId 단위 Customer) ────────────────
+  //
+  // 🔴 여기가 «서비스 키로 최종 사용자 카드 저장» 금지를 푸는 자리다. 금지가 막는 것은
+  //    카드가 **키 소유자 한 명의 Customer** 에 섞이는 것인데, 이 경로는 사람마다
+  //    Customer 를 따로 세운다(`service_customers`). 위의 `/profile/stripe/*` 는
+  //    여전히 «키 소유자 본인의 카드» 전용이다 — 둘을 섞지 말 것.
+
+  /** (서비스, 서비스측 사용자 id) → Stripe Customer. 없으면 만든다 */
+  async ensureServiceCustomer(
+    serviceUserId: string,
+    externalUserId: string,
+    opts: { label?: string; email?: string; name?: string } = {},
+  ): Promise<ServiceCustomer> {
+    const key = String(externalUserId ?? '').trim();
+    if (!key) throw new BadRequestException('externalUserId 가 필요합니다.');
+
+    const existing = await this.serviceCustomerRepo.findOneBy({
+      serviceUserId,
+      externalUserId: key,
+    });
+    if (existing) {
+      // 표시용 이름은 바뀔 수 있다(서비스에서 닉네임을 고친 경우)
+      if (opts.label && opts.label !== existing.label) {
+        existing.label = opts.label;
+        await this.serviceCustomerRepo.save(existing);
+      }
+      return existing;
+    }
+
+    const customer = await this.stripe.customers.create({
+      email: opts.email || undefined,
+      name: opts.name || opts.label || undefined,
+      // 🔴 두 값을 metadata 에 박아 둔다 — Stripe 대시보드에서 «어느 서비스의 누구» 인지
+      //    못 읽으면 분쟁·환불 문의가 들어왔을 때 사람을 특정할 수가 없다.
+      metadata: { serviceUserId, externalUserId: key },
+    });
+
+    const row = this.serviceCustomerRepo.create({
+      serviceUserId,
+      externalUserId: key,
+      stripeCustomerId: customer.id,
+      label: opts.label || null,
+    });
+    try {
+      return await this.serviceCustomerRepo.save(row);
+    } catch (err: any) {
+      // 같은 사람을 두 요청이 동시에 만들면 유니크 인덱스가 하나를 막는다.
+      // 진 쪽은 이긴 행을 쓰면 된다(Stripe Customer 하나가 붕 뜨지만 카드가 안 붙어 무해).
+      const raced = await this.serviceCustomerRepo.findOneBy({
+        serviceUserId,
+        externalUserId: key,
+      });
+      if (raced) return raced;
+      throw err;
+    }
+  }
+
+  private async requireServiceCustomer(
+    serviceUserId: string,
+    externalUserId: string,
+  ): Promise<ServiceCustomer> {
+    const row = await this.serviceCustomerRepo.findOneBy({
+      serviceUserId,
+      externalUserId: String(externalUserId ?? '').trim(),
+    });
+    if (!row) throw new NotFoundException('등록된 사용자가 아닙니다.');
+    return row;
+  }
+
+  /** 카드 저장용 SetupIntent. 프론트가 Stripe.js 로 확정한다 */
+  async createServiceSetupIntent(
+    serviceUserId: string,
+    externalUserId: string,
+    opts: { label?: string; email?: string; name?: string } = {},
+  ) {
+    const sc = await this.ensureServiceCustomer(
+      serviceUserId,
+      externalUserId,
+      opts,
+    );
+    const setupIntent = await this.stripe.setupIntents.create({
+      customer: sc.stripeCustomerId,
+      usage: 'off_session',
+      metadata: {
+        serviceUserId,
+        externalUserId: sc.externalUserId,
+        serviceCustomerId: sc.id,
+      },
+    });
+    return {
+      clientSecret: setupIntent.client_secret,
+      customerId: sc.stripeCustomerId,
+      externalUserId: sc.externalUserId,
+    };
+  }
+
+  /** 프론트 confirmSetup 직후 확정. 웹훅이 먼저 도착했으면 그 행을 돌려준다 */
+  async registerServiceCard(
+    serviceUserId: string,
+    externalUserId: string,
+    setupIntentId: string,
+  ) {
+    const sc = await this.requireServiceCustomer(serviceUserId, externalUserId);
+    const si = await this.stripe.setupIntents.retrieve(setupIntentId);
+    if (si.metadata?.serviceCustomerId !== sc.id) {
+      throw new BadRequestException('잘못된 SetupIntent입니다.');
+    }
+    if (si.status !== 'succeeded') {
+      throw new BadRequestException('카드 인증이 완료되지 않았습니다.');
+    }
+    const saved = await this.persistSavedCard(si);
+    if (saved) return this.toPublicCard(saved);
+
+    const pmId =
+      typeof si.payment_method === 'string'
+        ? si.payment_method
+        : si.payment_method?.id;
+    const existing = await this.paymentRepo.findOneBy({
+      serviceCustomerId: sc.id,
+      provider: PaymentProvider.STRIPE,
+      billingKey: pmId || undefined,
+    });
+    return existing ? this.toPublicCard(existing) : null;
+  }
+
+  /**
+   * 🔴 `billingKey`(pm_xxx)는 내려보내지 않는다. 서비스가 들고 있을 이유가 없고,
+   *    들고 있으면 그 순간 서비스가 결제수단의 원본을 갖게 된다(`/sso/payments` 와 같은 규칙).
+   */
+  private toPublicCard(m: PaymentMethod) {
+    return {
+      id: m.id,
+      cardNo: m.cardNo,
+      cardName: m.cardName,
+      pmType: m.pmType,
+      pmDetail: m.pmDetail,
+      createdAt: m.createdAt,
+    };
+  }
+
+  async listServiceCards(serviceUserId: string, externalUserId: string) {
+    const sc = await this.requireServiceCustomer(serviceUserId, externalUserId);
+    const rows = await this.paymentRepo.find({
+      where: {
+        serviceCustomerId: sc.id,
+        provider: PaymentProvider.STRIPE,
+        isActive: true,
+      },
+      order: { createdAt: 'DESC' },
+    });
+    return rows.map((m) => this.toPublicCard(m));
+  }
+
+  async removeServiceCard(
+    serviceUserId: string,
+    externalUserId: string,
+    paymentMethodId: string,
+  ) {
+    const sc = await this.requireServiceCustomer(serviceUserId, externalUserId);
+    const method = await this.paymentRepo.findOneBy({
+      id: paymentMethodId,
+      serviceCustomerId: sc.id,
+      provider: PaymentProvider.STRIPE,
+    });
+    if (!method) throw new NotFoundException('등록된 카드를 찾을 수 없습니다.');
+
+    // Stripe 쪽에서도 떼어 둔다 — 안 떼면 고객 화면(Link 등)에 계속 남는다.
+    try {
+      await this.stripe.paymentMethods.detach(method.billingKey);
+    } catch (err: any) {
+      this.logger.warn(`[Stripe] detach 실패(무시): ${err?.message}`);
+    }
+    method.isActive = false;
+    await this.paymentRepo.save(method);
+    return { success: true };
+  }
+
+  /**
+   * 일회성 결제. `externalUserId` 를 주면 그 사람의 Customer 에 붙고, 안 주면
+   * **Customer 없이** 만든다(익명 결제) — 서비스 소유자의 Customer 에 남의 결제를
+   * 달아 두면 대시보드에서 사람이 뒤섞인다.
+   */
+  async createServicePaymentIntent(
+    serviceUserId: string,
+    data: {
+      amount: number;
+      currency?: string;
+      goodName: string;
+      externalUserId?: string;
+      savePaymentMethod?: boolean;
+      externalOrderId?: string;
+      label?: string;
+      email?: string;
+    },
+  ) {
+    if (!data.amount || data.amount <= 0) {
+      throw new BadRequestException('결제 금액이 유효하지 않습니다.');
+    }
+    if (data.savePaymentMethod && !data.externalUserId) {
+      // 익명 결제의 카드를 저장할 곳이 없다. 저장하려면 그 카드의 임자를 서비스가 대야 한다.
+      throw new BadRequestException(
+        '카드를 저장하려면 externalUserId 가 필요합니다.',
+      );
+    }
+    const currency = this.normalizeCurrency(data.currency);
+    const orderId = generateOrderId();
+
+    const sc = data.externalUserId
+      ? await this.ensureServiceCustomer(serviceUserId, data.externalUserId, {
+          label: data.label,
+          email: data.email,
+        })
+      : null;
+
+    const paymentIntent = await this.stripe.paymentIntents.create({
+      amount: data.amount,
+      currency,
+      ...(sc ? { customer: sc.stripeCustomerId } : {}),
+      description: data.goodName,
+      automatic_payment_methods: { enabled: true },
+      setup_future_usage: data.savePaymentMethod ? 'off_session' : undefined,
+      metadata: {
+        userId: serviceUserId,
+        orderId,
+        ...(sc
+          ? { serviceCustomerId: sc.id, externalUserId: sc.externalUserId }
+          : {}),
+        ...(data.externalOrderId
+          ? { externalOrderId: data.externalOrderId }
+          : {}),
+      },
+    });
+
+    const tx = this.txRepo.create({
+      userId: serviceUserId,
+      serviceCustomerId: sc?.id ?? null,
+      externalUserId: sc?.externalUserId ?? null,
+      provider: PaymentProvider.STRIPE,
+      paymentMethodId: null,
+      sellerId: null,
+      orderId,
+      externalOrderId: data.externalOrderId || null,
+      stripePaymentIntentId: paymentIntent.id,
+      goodName: data.goodName,
+      amount: data.amount,
+      currency,
+      cancelledAmount: 0,
+      buyerName: data.label || undefined,
+      payMethod: 'stripe',
+      status: PaymentTransactionStatus.PENDING,
+    });
+    await this.txRepo.save(tx);
+
+    return {
+      clientSecret: paymentIntent.client_secret,
+      orderId,
+      transactionId: tx.id,
+    };
+  }
+
+  /**
+   * 저장 카드로 청구(정기결제). **서비스 API 키로 부른다** — 매달 도는 일이라
+   * 사용자가 화면에 없다.
+   *
+   * 🔴 카드는 `serviceCustomerId` 로 찾는다. 즉 **자기 서비스의 손님 카드만** 긁을 수 있고,
+   *    남의 서비스 손님이나 플랫폼 사용자 본인 카드에는 닿지 않는다.
+   */
+  async chargeServiceCard(
+    serviceUserId: string,
+    data: {
+      externalUserId: string;
+      paymentMethodId: string;
+      amount: number;
+      currency?: string;
+      goodName: string;
+      externalOrderId?: string;
+      memo?: string;
+    },
+  ) {
+    const sc = await this.requireServiceCustomer(
+      serviceUserId,
+      data.externalUserId,
+    );
+    const method = await this.paymentRepo.findOneBy({
+      id: data.paymentMethodId,
+      serviceCustomerId: sc.id,
+      provider: PaymentProvider.STRIPE,
+      isActive: true,
+    });
+    if (!method) throw new NotFoundException('등록된 카드를 찾을 수 없습니다.');
+    if (!data.amount || data.amount <= 0) {
+      throw new BadRequestException('결제 금액이 유효하지 않습니다.');
+    }
+    const currency = this.normalizeCurrency(data.currency);
+    const orderId = generateOrderId();
+
+    const tx = this.txRepo.create({
+      userId: serviceUserId,
+      serviceCustomerId: sc.id,
+      externalUserId: sc.externalUserId,
+      provider: PaymentProvider.STRIPE,
+      paymentMethodId: method.id,
+      sellerId: null,
+      orderId,
+      externalOrderId: data.externalOrderId || null,
+      goodName: data.goodName,
+      amount: data.amount,
+      currency,
+      cancelledAmount: 0,
+      buyerName: sc.label ?? undefined,
+      payMethod: 'stripe',
+      status: PaymentTransactionStatus.PENDING,
+      memo: data.memo,
+    });
+    await this.txRepo.save(tx);
+
+    try {
+      const paymentIntent = await this.stripe.paymentIntents.create({
+        amount: data.amount,
+        currency,
+        customer: sc.stripeCustomerId,
+        payment_method: method.billingKey,
+        off_session: true,
+        confirm: true,
+        description: data.goodName,
+        metadata: {
+          userId: serviceUserId,
+          orderId,
+          serviceCustomerId: sc.id,
+          externalUserId: sc.externalUserId,
+          ...(data.externalOrderId
+            ? { externalOrderId: data.externalOrderId }
+            : {}),
+        },
+        expand: ['latest_charge'],
+      });
+
+      tx.stripePaymentIntentId = paymentIntent.id;
+      tx.rawResponse = { paymentIntent: paymentIntent as any };
+      tx.receiptUrl = this.extractReceiptUrl(paymentIntent) || tx.receiptUrl;
+
+      if (paymentIntent.status === 'succeeded') {
+        tx.status = PaymentTransactionStatus.PAID;
+        tx.paidAt = new Date();
+      } else {
+        // requires_action 등은 off_session 청구에선 실패로 간주
+        tx.status = PaymentTransactionStatus.FAILED;
+      }
+      const saved = await this.txRepo.save(tx);
+      // 🔴 여기서 쏘지 않으면 정기결제는 웹훅을 못 받는다 — Stripe 웹훅이 와도
+      //    상태가 이미 PAID 라 `syncPaymentIntent` 의 전이 조건에 안 걸린다.
+      this.dispatchOnce(
+        saved,
+        saved.status === PaymentTransactionStatus.PAID
+          ? 'payment.paid'
+          : 'payment.failed',
+      );
+      return saved;
+    } catch (error: any) {
+      this.logger.error(`Stripe chargeServiceCard 실패: ${error?.message}`);
+      tx.status = PaymentTransactionStatus.FAILED;
+      tx.stripePaymentIntentId =
+        error?.raw?.payment_intent?.id || tx.stripePaymentIntentId;
+      tx.rawResponse = { error: error?.message, code: error?.code };
+      const saved = await this.txRepo.save(tx);
+      this.dispatchOnce(saved, 'payment.failed');
+      throw new BadRequestException(
+        error?.message || 'Stripe 결제에 실패했습니다.',
+      );
+    }
+  }
+
   // ── 웹훅 처리 (서명검증 → 이벤트별 동기화) ──────────────────────────────────
   async handleWebhook(rawBody: Buffer, signature: string) {
     const secret = process.env.API_STRIPE_WEBHOOK_SECRET;
@@ -390,6 +767,27 @@ export class StripeService {
   private appendEvent(tx: PaymentTransaction, eventId: string) {
     const events = (tx.rawResponse?.events as string[]) || [];
     tx.rawResponse = { ...(tx.rawResponse || {}), events: [...events, eventId] };
+  }
+
+  /**
+   * 연동 서비스에 한 번만 알린다.
+   *
+   * 같은 거래가 두 길로 확정될 수 있다 — off_session 청구는 응답에서 곧장 PAID 가 되고,
+   * 잠시 뒤 Stripe 웹훅이 같은 결과를 또 들고 온다. 표식을 남기지 않으면 서비스가
+   * 같은 후원을 **두 번 적는다**.
+   */
+  private dispatchOnce(
+    tx: PaymentTransaction,
+    event: 'payment.paid' | 'payment.failed' | 'payment.refunded',
+  ): void {
+    const sent = (tx.rawResponse?.dispatched as string[]) || [];
+    if (sent.includes(event)) return;
+    tx.rawResponse = { ...(tx.rawResponse || {}), dispatched: [...sent, event] };
+    // 표식 저장은 기다리지 않는다(배달도 비동기다). 실패해도 재시도는 웹훅이 받는다.
+    void this.txRepo
+      .update(tx.id, { rawResponse: tx.rawResponse })
+      .catch(() => undefined);
+    this.webhooks.dispatch(tx, event);
   }
 
   // PaymentIntent의 latest_charge(확장된 경우)에서 영수증 URL 추출.
@@ -458,7 +856,12 @@ export class StripeService {
       }
     }
     this.appendEvent(tx, event.id);
-    await this.txRepo.save(tx);
+    const saved = await this.txRepo.save(tx);
+    if (saved.status === PaymentTransactionStatus.PAID) {
+      this.dispatchOnce(saved, 'payment.paid');
+    } else if (saved.status === PaymentTransactionStatus.FAILED) {
+      this.dispatchOnce(saved, 'payment.failed');
+    }
   }
 
   private async syncChargeRefund(event: Stripe.Event, charge: Stripe.Charge) {
@@ -481,7 +884,8 @@ export class StripeService {
         : PaymentTransactionStatus.PARTIAL_CANCELLED;
     if (!tx.cancelledAt) tx.cancelledAt = new Date();
     this.appendEvent(tx, event.id);
-    await this.txRepo.save(tx);
+    const saved = await this.txRepo.save(tx);
+    this.dispatchOnce(saved, 'payment.refunded');
   }
 
   // pmType/pmDetail이 비어있는 기존 행을 Stripe 조회로 채운다.
@@ -534,21 +938,27 @@ export class StripeService {
   private async persistSavedCard(
     si: Stripe.SetupIntent,
   ): Promise<PaymentMethod | null> {
+    // 카드의 임자는 둘 중 하나다 — 플랫폼 사용자(`userId`)이거나
+    // 연동 서비스의 손님(`serviceCustomerId`)이거나. 웹훅은 양쪽을 다 받는다.
     const userId = si.metadata?.userId;
+    const serviceCustomerId = si.metadata?.serviceCustomerId;
     const pmId =
       typeof si.payment_method === 'string'
         ? si.payment_method
         : si.payment_method?.id;
     const customerId =
       typeof si.customer === 'string' ? si.customer : si.customer?.id;
-    if (!userId || !pmId || !customerId) {
+    if ((!userId && !serviceCustomerId) || !pmId || !customerId) {
       this.logger.warn('[Stripe] setup_intent 메타데이터 누락');
       return null;
     }
 
     // 멱등성: 동일 pm 이미 저장된 경우 skip
+    const owner = serviceCustomerId
+      ? { serviceCustomerId }
+      : { userId: userId as string };
     const exists = await this.paymentRepo.findOneBy({
-      userId,
+      ...owner,
       provider: PaymentProvider.STRIPE,
       billingKey: pmId,
     });
@@ -582,7 +992,7 @@ export class StripeService {
     if (mandateId) pmDetail = { ...(pmDetail || {}), mandateId };
 
     const payment = this.paymentRepo.create({
-      userId,
+      ...owner,
       provider: PaymentProvider.STRIPE,
       cardNo: last4,
       cardName: cardBrand,
@@ -594,7 +1004,11 @@ export class StripeService {
       isActive: true,
     });
     const saved = await this.paymentRepo.save(payment);
-    this.logger.log(`[Stripe] 저장 카드 등록: user=${userId} pm=${pmId}`);
+    this.logger.log(
+      `[Stripe] 저장 카드 등록: ${
+        serviceCustomerId ? `serviceCustomer=${serviceCustomerId}` : `user=${userId}`
+      } pm=${pmId}`,
+    );
     return saved;
   }
 }

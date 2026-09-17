@@ -174,9 +174,7 @@ function RegisterCardForm() {
         <CardHeader>
           <CardTitle>결제 카드 등록</CardTitle>
           <CardDescription>
-            {ctx ? `${ctx.clientName} 의 정기결제에 쓸 카드입니다.` : ' '}
-            <br />
-            카드 정보는 파란대나무숲과 PayApp 만 받습니다. 서비스에는 전달되지 않습니다.
+            {ctx ? `${ctx.clientName} 의 정기결제에 쓸 카드입니다.` : ' '}
           </CardDescription>
         </CardHeader>
         <form onSubmit={submit}>

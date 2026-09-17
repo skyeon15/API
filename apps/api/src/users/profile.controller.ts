@@ -17,6 +17,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity.js';
 import { PaymentMethod } from './entities/payment-method.entity.js';
+import { PaymentMethodUsage } from './entities/payment-method-usage.entity.js';
 import { PayappSeller } from './entities/payapp-seller.entity.js';
 import { PaymentTransaction } from './entities/payment-transaction.entity.js';
 import { CashReceipt } from './entities/cash-receipt.entity.js';
@@ -71,6 +72,8 @@ export class ProfileController {
     private readonly userRepo: Repository<User>,
     @InjectRepository(PaymentMethod)
     private readonly paymentRepo: Repository<PaymentMethod>,
+    @InjectRepository(PaymentMethodUsage)
+    private readonly usageRepo: Repository<PaymentMethodUsage>,
     @InjectRepository(PayappSeller)
     private readonly sellerRepo: Repository<PayappSeller>,
     @InjectRepository(PaymentTransaction)
@@ -233,7 +236,11 @@ export class ProfileController {
   @ApiOperation({ summary: '내 결제 수단 목록' })
   async getPayments(@Req() req: any) {
     const userId = this.getUserId(req);
-    return this.paymentRepo.find({ where: { userId, isActive: true } });
+    return this.paymentRepo.find({
+      where: { userId, isActive: true },
+      relations: ['usages'],
+      order: { createdAt: 'DESC' },
+    });
   }
 
   @Post('payments')
@@ -274,6 +281,15 @@ export class ProfileController {
     const userId = this.getUserId(req);
     const payment = await this.paymentRepo.findOneBy({ id, userId });
     if (!payment) throw new NotFoundException('결제 수단을 찾을 수 없습니다.');
+
+    // 🔴 사용 중인 카드는 삭제를 거부한다.
+    const usages = await this.usageRepo.find({ where: { paymentMethodId: id } });
+    if (usages.length > 0) {
+      const labels = usages.map((u) => u.label).join(', ');
+      throw new BadRequestException(
+        `이 카드는 현재 [${labels}] 정기 결제에 사용 중이므로 삭제할 수 없습니다. 해당 서비스에서 결제 카드를 변경하거나 구독을 해지한 후 삭제해 주세요.`,
+      );
+    }
 
     // payapp에서도 삭제 처리
     await this.paymentService.deleteCard(payment);

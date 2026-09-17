@@ -3,6 +3,9 @@ import { DataSource } from 'typeorm';
 import { ApiKey } from './admin/entities/api-key.entity.js';
 import { User } from './users/entities/user.entity.js';
 import { PaymentMethod } from './users/entities/payment-method.entity.js';
+import { PaymentMethodUsage } from './users/entities/payment-method-usage.entity.js';
+import { ServiceCustomer } from './users/entities/service-customer.entity.js';
+import { ServiceWebhook } from './users/entities/service-webhook.entity.js';
 import { PayappSeller } from './users/entities/payapp-seller.entity.js';
 import { PaymentTransaction } from './users/entities/payment-transaction.entity.js';
 import { CashReceipt } from './users/entities/cash-receipt.entity.js';
@@ -31,6 +34,9 @@ export const AppDataSource = new DataSource({
     ApiKey,
     User,
     PaymentMethod,
+    PaymentMethodUsage,
+    ServiceCustomer,
+    ServiceWebhook,
     PayappSeller,
     PaymentTransaction,
     CashReceipt,

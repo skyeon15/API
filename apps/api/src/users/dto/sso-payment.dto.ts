@@ -54,3 +54,26 @@ export class ChargeClientCardDto {
   @ApiProperty({ description: '메모', required: false })
   memo?: string;
 }
+
+export class AddPaymentMethodUsageDto {
+  @ApiProperty({
+    description: '사용처 라벨(화면 표시용)',
+    example: '학생 구독 BV 6점 세트',
+  })
+  label: string;
+
+  @ApiProperty({
+    description: '서비스측 구독/사용 식별자(ID)',
+    required: false,
+  })
+  externalId?: string;
+}
+
+export class RemovePaymentMethodUsageDto {
+  @ApiProperty({
+    description: '서비스측 구독/사용 식별자(ID)',
+    required: false,
+  })
+  externalId?: string;
+}
+
