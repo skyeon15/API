@@ -16,6 +16,11 @@ export const SERVICE_WEBHOOK_EVENTS = [
   'payment.paid',
   'payment.failed',
   'payment.refunded',
+  // 차지백. **`disputed` 는 돈이 아직 돌아오지 않은 상태**다(카드사가 붙들고 있다) —
+  // 이겨서 되돌아올 수도 있으므로 서비스는 «판정 보류»로 다루고, 확정은 `dispute_closed`
+  // 의 `status`(paid = 이김 / cancelled = 짐)로 가른다.
+  'payment.disputed',
+  'payment.dispute_closed',
 ] as const;
 
 export type ServiceWebhookEvent = (typeof SERVICE_WEBHOOK_EVENTS)[number];

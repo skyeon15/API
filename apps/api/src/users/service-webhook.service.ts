@@ -102,6 +102,11 @@ export class ServiceWebhookService {
         goodName: tx.goodName,
         paidAt: tx.paidAt,
         receiptUrl: tx.receiptUrl,
+        // 차지백 이벤트에만 실린다. 서비스가 «왜 내려갔나»를 사람 말로 적을 수 있어야 하고,
+        // `status`(warning_needs_response·lost·won…)가 곧 판정이다.
+        ...(tx.rawResponse?.dispute
+          ? { dispute: tx.rawResponse.dispute as Record<string, unknown> }
+          : {}),
       },
     });
 

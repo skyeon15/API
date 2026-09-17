@@ -17,6 +17,7 @@ import {
 import { User, UserRole } from './entities/user.entity.js';
 import { ServiceCustomer } from './entities/service-customer.entity.js';
 import { ServiceWebhookService } from './service-webhook.service.js';
+import { ServiceWebhookEvent } from './entities/service-webhook.entity.js';
 
 // 카드가 아닌 저장 수단(간편결제)의 표시명
 const WALLET_LABELS: Record<string, string> = {
@@ -813,6 +814,12 @@ export class StripeService {
       case 'setup_intent.succeeded':
         await this.persistSavedCard(event.data.object as Stripe.SetupIntent);
         break;
+      // 차지백. **MoR인 우리가 당사자**라 카드사와 다투는 것도, 지면 돈을 무는 것도 우리다 —
+      // 연동 서비스는 «그 사람을 명단에서 내려야 하나»를 알아야 해서 콜백으로 넘긴다.
+      case 'charge.dispute.created':
+      case 'charge.dispute.closed':
+        await this.syncDispute(event, event.data.object as Stripe.Dispute);
+        break;
       default:
         this.logger.log(`[Stripe Webhook] 미처리 이벤트: ${event.type}`);
     }
@@ -843,7 +850,7 @@ export class StripeService {
    */
   private dispatchOnce(
     tx: PaymentTransaction,
-    event: 'payment.paid' | 'payment.failed' | 'payment.refunded',
+    event: ServiceWebhookEvent,
   ): void {
     const sent = (tx.rawResponse?.dispatched as string[]) || [];
     if (sent.includes(event)) return;
@@ -951,6 +958,68 @@ export class StripeService {
     this.appendEvent(tx, event.id);
     const saved = await this.txRepo.save(tx);
     this.dispatchOnce(saved, 'payment.refunded');
+  }
+
+  /**
+   * 차지백 동기화.
+   *
+   * 🔴 **`created` 에서는 상태를 바꾸지 않는다.** 분쟁은 이길 수도 있어서, 그 자리에서
+   *    CANCELLED 로 내리면 **«결제된 적 없는 건»으로 기록이 덮인다**. 돈은 이미 카드사가
+   *    붙들고 있지만 그건 «확정»이 아니다 — 확정은 `closed` 의 `status` 다.
+   * 🔴 진 것(`lost`)만 환불과 같은 자리로 내린다. 이긴 것(`won`)은 PAID 그대로 두고
+   *    사유만 남긴다 — 그래야 나중에 «왜 한 번 내려갔다 올라왔나»를 읽을 수 있다.
+   *
+   * 사유·판정은 `rawResponse.dispute` 에 남기고, 그 값이 그대로 연동 서비스의 콜백에 실린다.
+   */
+  private async syncDispute(event: Stripe.Event, dispute: Stripe.Dispute) {
+    const piId =
+      typeof dispute.payment_intent === 'string'
+        ? dispute.payment_intent
+        : dispute.payment_intent?.id;
+    const tx = await this.findTx(piId, dispute.metadata?.orderId);
+    if (!tx) {
+      this.logger.warn(
+        `[Stripe Webhook] tx not found for dispute: ${dispute.id} (charge=${String(dispute.charge)})`,
+      );
+      return;
+    }
+    if (this.alreadyProcessed(tx, event.id)) return;
+
+    const closed = event.type === 'charge.dispute.closed';
+    const lost = closed && dispute.status === 'lost';
+
+    if (lost) {
+      // 진 분쟁은 돈이 카드 주인에게 돌아간 것이다 — 환불과 같은 자리로 내린다.
+      tx.cancelledAmount = Math.min(tx.amount, dispute.amount || tx.amount);
+      tx.status =
+        tx.cancelledAmount >= tx.amount
+          ? PaymentTransactionStatus.CANCELLED
+          : PaymentTransactionStatus.PARTIAL_CANCELLED;
+      if (!tx.cancelledAt) tx.cancelledAt = new Date();
+    }
+
+    tx.rawResponse = {
+      ...(tx.rawResponse || {}),
+      dispute: {
+        id: dispute.id,
+        status: dispute.status,
+        reason: dispute.reason,
+        amount: dispute.amount,
+        // 기한을 놓치면 **자동으로 진다.** 로그에도 남겨 둔다.
+        evidenceDueBy: dispute.evidence_details?.due_by ?? null,
+      },
+    };
+    this.appendEvent(tx, event.id);
+    const saved = await this.txRepo.save(tx);
+
+    this.logger.warn(
+      `[Stripe Webhook] 차지백 ${closed ? '종결' : '접수'}: ${dispute.id} ` +
+        `tx=${tx.id} status=${dispute.status} reason=${dispute.reason}`,
+    );
+    this.dispatchOnce(
+      saved,
+      closed ? 'payment.dispute_closed' : 'payment.disputed',
+    );
   }
 
   // pmType/pmDetail이 비어있는 기존 행을 Stripe 조회로 채운다.

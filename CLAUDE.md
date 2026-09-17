@@ -112,6 +112,11 @@
   - **영수증(`email` → `receipt_email`)**: 주소를 주면 Stripe가 대신 보낸다. `ensureServiceCustomer`는
     **이미 있는 손님도 주소를 주면 갱신**한다 — 만들 때만 넣으면 그 전에 생긴 손님은 영영 못 받는다.
     갱신 실패는 삼킨다(영수증 때문에 결제를 막지 않는다)
+  - **분쟁(`charge.dispute.created`/`closed` → `syncDispute`)**: MoR라 카드사와 다투는 당사자가 우리다.
+    🔴 **접수에서 상태를 내리지 않는다** — 분쟁은 이길 수 있어서 CANCELLED 로 덮으면 «결제된 적 없는 건»이
+    된다. 진 것(`lost`)만 환불과 같은 자리(CANCELLED/PARTIAL_CANCELLED)로 내린다. 사유·판정·대응 기한은
+    `rawResponse.dispute` 에 남고 그대로 서비스 콜백에 실린다(`payment.disputed`·`payment.dispute_closed`).
+    🔴 **Stripe 엔드포인트에 두 이벤트를 등록해야 배달이 온다** — 코드만 고치면 아무 일도 안 일어난다
   - **결제수단 목록은 대시보드 설정을 따름**(card/link/kr_card/kakao_pay/naver_pay/amazon_pay). 코드에서 `payment_method_types`를 고정하지 않음
   - **리다이렉트형 수단(네이버페이 등)**: `confirmSetup`/`confirmPayment`에 `return_url` **필수**(`redirect: 'if_required'`여도 필수). 복귀 전용 라우트 `apps/web/src/app/stripe/return/page.tsx` — `setup_intent`면 카드저장 확정 API 호출, `payment_intent`면 결과 안내(거래 상태 반영은 웹훅). `next`는 내부 경로만 허용(오픈 리다이렉트 차단). 카드는 이탈이 없어 이 라우트를 거치지 않음
   - **네이버페이는 카드번호·브랜드를 주지 않음**. 확보 가능한 건 `type`/`buyer_id`(동일 계정 식별 해시)/`funding`(card|points) + SetupIntent의 `mandate`뿐 → `payment_methods.pmType`(varchar) + `pmDetail`(jsonb)에 저장. 카드는 `pmDetail`에 brand/last4/funding/country/exp*. 프론트는 `pmType !== 'card'`일 때 `cardNo`(`****`) 대신 funding·buyerId를 표기

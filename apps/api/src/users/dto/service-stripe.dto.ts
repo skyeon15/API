@@ -116,7 +116,7 @@ export class UpsertServiceWebhookDto {
 
   @ApiProperty({
     description:
-      "받을 이벤트. **비우면 전부** 받는다: payment.paid · payment.failed · payment.refunded",
+      '받을 이벤트. **비우면 전부** 받는다: payment.paid · payment.failed · payment.refunded · payment.disputed · payment.dispute_closed',
     required: false,
     type: [String],
   })
