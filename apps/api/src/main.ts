@@ -105,6 +105,14 @@ async function bootstrap() {
     .addBearerAuth(
       { type: 'http', scheme: 'bearer', description: 'API 키를 입력하세요.' },
       'api-key',
+    )
+    .addBearerAuth(
+      {
+        type: 'http',
+        scheme: 'bearer',
+        description: '동의받은 scope를 포함한 SSO 액세스 토큰',
+      },
+      'sso-token',
     );
   SERVICE_REGISTRY.forEach(({ label }) => builder.addTag(label));
   builder.addTag(

@@ -14,6 +14,7 @@ import { ProfileController } from './profile.controller.js';
 import { StripeConfigController } from './stripe-config.controller.js';
 import { PayappWebhookController } from './payapp-webhook.controller.js';
 import { SsoPaymentController } from './sso-payment.controller.js';
+import { SsoStripeController } from './sso-stripe.controller.js';
 import { ServiceStripeController } from './service-stripe.controller.js';
 import { StripeWebhookController } from './stripe-webhook.controller.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
@@ -44,6 +45,7 @@ import { ServiceWebhookService } from './service-webhook.service.js';
   controllers: [
     ProfileController,
     SsoPaymentController,
+    SsoStripeController,
     ServiceStripeController,
     PayappWebhookController,
     StripeWebhookController,
