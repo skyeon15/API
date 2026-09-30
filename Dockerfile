@@ -49,21 +49,23 @@ RUN apk add --no-cache bash curl gnupg \
  && adduser --system --uid 1001 app
 
 # 런타임 의존성 (api·web 공용 superset)
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps --chown=app:nodejs /app/node_modules ./node_modules
 
 # API 산출물
 COPY --from=builder --chown=app:nodejs /app/apps/api/dist ./apps/api/dist
-COPY --from=builder /app/apps/api/package.json ./apps/api/package.json
+COPY --from=builder --chown=app:nodejs /app/apps/api/package.json ./apps/api/package.json
 # ServeStaticModule이 process.cwd()/public = /app/public 을 바라봄
-COPY --from=builder /app/apps/api/public ./public
+COPY --from=builder --chown=app:nodejs /app/apps/api/public ./public
 
 # Web 산출물 (next start 로 구동 → .next + public + package.json 필요)
-COPY --from=builder /app/apps/web/package.json ./apps/web/package.json
+COPY --from=builder --chown=app:nodejs /app/apps/web/package.json ./apps/web/package.json
 COPY --from=builder --chown=app:nodejs /app/apps/web/.next ./apps/web/.next
-COPY --from=builder /app/apps/web/public ./apps/web/public
+COPY --from=builder --chown=app:nodejs /app/apps/web/public ./apps/web/public
 
-COPY docker-entrypoint.sh ./docker-entrypoint.sh
-RUN chmod +x ./docker-entrypoint.sh && chown -R app:nodejs /app
+COPY --chown=app:nodejs docker-entrypoint.sh ./docker-entrypoint.sh
+# COPY 시 소유권을 지정해 node_modules 전체가 chown 레이어에 다시 저장되는 것을 막는다.
+RUN chmod +x ./docker-entrypoint.sh \
+ && chown app:nodejs /app /app/apps /app/apps/api /app/apps/web
 
 USER app
 EXPOSE 10150 10151
