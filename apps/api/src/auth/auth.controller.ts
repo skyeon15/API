@@ -310,7 +310,8 @@ export class AuthController {
       `${resolveApiBaseUrl(req)}/auth/kakao/callback`,
     );
     const state = redirect || this.resolveDefaultRedirect(req);
-    const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${CONFIG.KAKAO.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&state=${state}`;
+    // SSO 복귀 주소의 scope·state가 카카오 인가 요청의 쿼리로 섞이지 않게 보존한다.
+    const kakaoAuthUrl = `https://kauth.kakao.com/oauth/authorize?client_id=${CONFIG.KAKAO.CLIENT_ID}&redirect_uri=${callbackUrl}&response_type=code&state=${encodeURIComponent(state)}`;
     return res.redirect(kakaoAuthUrl);
   }
 

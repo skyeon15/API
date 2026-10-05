@@ -12,6 +12,7 @@ import {
 import { User } from './user.entity.js';
 import { PaymentMethod } from './payment-method.entity.js';
 import { PayappSeller } from './payapp-seller.entity.js';
+import type { ActualPaymentMethod } from '../payment-metadata.js';
 
 export enum PaymentTransactionStatus {
   PENDING = 'pending',
@@ -105,6 +106,10 @@ export class PaymentTransaction extends BaseEntity {
 
   @Column({ type: 'varchar', default: 'billing' })
   payMethod: string; // billing | payrequest
+
+  /** Approved payment-time snapshot. payMethod above remains the integration mode. */
+  @Column({ type: 'jsonb', nullable: true })
+  actualPaymentMethod: ActualPaymentMethod | null;
 
   @Column({
     type: 'enum',

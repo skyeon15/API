@@ -87,6 +87,7 @@ try {
       currency: 'usd',
       rawResponse: { private: true },
       stripePaymentIntentId: 'pi_private',
+      actualPaymentMethod: null,
     },
   ];
   const module = await Test.createTestingModule({
@@ -235,6 +236,7 @@ try {
       status: 'pending',
       amount: 5000,
       currency: 'usd',
+      actualPaymentMethod: null,
     },
   ]);
   assert.deepEqual(queries[0].where, {

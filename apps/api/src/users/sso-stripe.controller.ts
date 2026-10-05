@@ -129,6 +129,7 @@ export class SsoStripeController {
         'cancelledAmount',
         'receiptUrl',
         'paidAt',
+        'actualPaymentMethod',
       ],
       order: { createdAt: 'DESC' },
     });

@@ -18,6 +18,7 @@ import { User, UserRole } from './entities/user.entity.js';
 import { ServiceCustomer } from './entities/service-customer.entity.js';
 import { ServiceWebhookService } from './service-webhook.service.js';
 import { ServiceWebhookEvent } from './entities/service-webhook.entity.js';
+import { mergePaymentMetadata, stripeChargeMetadata } from './payment-metadata.js';
 
 // 카드가 아닌 저장 수단(간편결제)의 표시명
 const WALLET_LABELS: Record<string, string> = {
@@ -292,6 +293,9 @@ export class StripeService {
       if (paymentIntent.status === 'succeeded') {
         tx.status = PaymentTransactionStatus.PAID;
         tx.paidAt = new Date();
+        tx.actualPaymentMethod = stripeChargeMetadata(paymentIntent.latest_charge, {
+          paymentIntentId: paymentIntent.id, amount: tx.amount, currency: tx.currency,
+        });
       } else {
         // requires_action 등은 off_session 청구에선 실패로 간주
         tx.status = PaymentTransactionStatus.FAILED;
@@ -748,6 +752,9 @@ export class StripeService {
       if (paymentIntent.status === 'succeeded') {
         tx.status = PaymentTransactionStatus.PAID;
         tx.paidAt = new Date();
+        tx.actualPaymentMethod = stripeChargeMetadata(paymentIntent.latest_charge, {
+          paymentIntentId: paymentIntent.id, amount: tx.amount, currency: tx.currency,
+        });
       } else {
         // requires_action 등은 off_session 청구에선 실패로 간주
         tx.status = PaymentTransactionStatus.FAILED;
@@ -897,22 +904,31 @@ export class StripeService {
       this.logger.warn(`[Stripe Webhook] tx not found: pi=${pi.id}`);
       return;
     }
-    if (this.alreadyProcessed(tx, event.id)) return;
-
+    const processed = this.alreadyProcessed(tx, event.id);
+    if (processed && (status !== PaymentTransactionStatus.PAID || tx.actualPaymentMethod)) return;
     if (!tx.stripePaymentIntentId) tx.stripePaymentIntentId = pi.id;
     if (status === PaymentTransactionStatus.PAID) {
-      // 웹훅 PaymentIntent의 latest_charge는 id 문자열이라 charge를 조회해 영수증 URL 확보.
-      if (!tx.receiptUrl && pi.latest_charge) {
+      // The charge records the actual method, issuer/network and installment plan at approval.
+      if ((!tx.receiptUrl || !tx.actualPaymentMethod) && pi.latest_charge) {
         const chargeId =
           typeof pi.latest_charge === 'string'
             ? pi.latest_charge
             : pi.latest_charge.id;
         try {
-          const charge = await this.stripe.charges.retrieve(chargeId);
-          tx.receiptUrl = charge.receipt_url || null;
+          const charge = typeof pi.latest_charge === 'string'
+            ? await this.stripe.charges.retrieve(chargeId)
+            : pi.latest_charge;
+          tx.receiptUrl = charge.receipt_url || tx.receiptUrl;
+          tx.actualPaymentMethod = mergePaymentMetadata(tx.actualPaymentMethod, stripeChargeMetadata(charge, {
+            paymentIntentId: pi.id, amount: tx.amount, currency: tx.currency,
+          }));
         } catch (err: any) {
           this.logger.warn(`[Stripe Webhook] charge retrieve 실패: ${err?.message}`);
         }
+      }
+      if (processed) {
+        await this.txRepo.update(tx.id, { actualPaymentMethod: tx.actualPaymentMethod, receiptUrl: tx.receiptUrl });
+        return;
       }
       // 이미 환불/취소된 건은 덮어쓰지 않음
       if (
@@ -946,7 +962,16 @@ export class StripeService {
       this.logger.warn(`[Stripe Webhook] tx not found for refund: charge=${charge.id}`);
       return;
     }
-    if (this.alreadyProcessed(tx, event.id)) return;
+    const previousMetadata = tx.actualPaymentMethod;
+    tx.actualPaymentMethod = mergePaymentMetadata(tx.actualPaymentMethod, stripeChargeMetadata(charge, {
+      paymentIntentId: piId ?? '', amount: tx.amount, currency: tx.currency,
+    }));
+    if (this.alreadyProcessed(tx, event.id)) {
+      if (JSON.stringify(previousMetadata ?? null) !== JSON.stringify(tx.actualPaymentMethod)) {
+        await this.txRepo.update(tx.id, { actualPaymentMethod: tx.actualPaymentMethod });
+      }
+      return;
+    }
 
     // Stripe가 알려주는 누적 환불액으로 동기화 (직접 환불/대시보드 환불 포함)
     tx.cancelledAmount = Math.min(tx.amount, charge.amount_refunded);

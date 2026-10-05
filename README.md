@@ -1,5 +1,43 @@
 # 에케 API EKE API
 
+## 실제 결제수단 기록
+
+승인된 거래의 `actualPaymentMethod`에 결제 당시의 수단·카드사·할부 정보를 저장합니다.
+기존 `payMethod`는 연동 방식(`billing`, `payapp`, `stripe` 등)이므로 실제 결제수단과 구분합니다.
+
+```json
+{
+  "actualPaymentMethod": {
+    "type": "CARD",
+    "cardName": "현대",
+    "installmentMonths": 0
+  }
+}
+```
+
+- `type`: `CARD`, `TRANSFER`, `VIRTUAL_ACCOUNT`, `MOBILE`, `EASY_PAY` 등 실제 승인 수단
+- `provider`: 간편결제 사업자(`NAVERPAY`, `KAKAOPAY`, `PAYCO` 등)
+- `cardName`: PG가 제공한 카드사명. Stripe 카드 네트워크는 별도 `cardBrand`에 기록
+- `cardType`: 제공되는 경우 `CREDIT` 또는 `DEBIT`
+- `installmentMonths`: `0`은 일시불, 양수는 할부 개월 수. 정보가 없으면 생략
+- `fundingType`: 간편결제 내부 수단이 확인되는 경우 `CARD`, `TRANSFER`, `CHARGE`
+
+페이앱 승인 통보·등록 카드 청구 성공, Stripe 승인된 Charge에서 기록합니다.
+취소·부분취소 후에도 승인 당시 정보를 보존하며, 실패·대기 상태를 실제 결제수단으로 추정하지 않습니다.
+거래 조회(`/profile/payments/transactions`, `/sso/stripe/transactions`, 서비스 거래 조회)와 서비스 콜백에 제공합니다.
+카드번호·빌링키·PG 인증값은 이 필드에 포함하지 않습니다.
+
+`1791158400000-AddActualPaymentMethod` 마이그레이션은 nullable JSONB 열을 추가하고,
+기존 저장된 승인 통보 또는 성공한 Stripe 응답에서 확인되는 값만 복원합니다.
+현재 저장 카드 정보로 과거 결제를 추정하지 않으며 상태·결제 금액·취소 금액은 변경하지 않습니다.
+마이그레이션은 API 부팅 때 자동 적용됩니다. 로컬 검증은 아래 명령으로 실행합니다.
+
+```bash
+node scripts/verify-payment-metadata.mjs
+# 별도 PostgreSQL 스키마에서 실제 마이그레이션·백필·재실행 검증
+doppler run --project api-platform --config dev -- node scripts/verify-payment-metadata.mjs --db
+```
+
 ## 환경변수 (Doppler)
 
 이 프로젝트의 시크릿은 [Doppler](https://www.doppler.com/) 프로젝트 `api-platform` 에서 관리합니다. 로컬에 `.env` 파일을 두지 않습니다.

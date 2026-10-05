@@ -23,6 +23,7 @@ import { User } from './entities/user.entity.js';
 import { firstValueFrom } from 'rxjs';
 import * as qs from 'querystring';
 import { generateOrderId } from '../common/utils/id.util.js';
+import { approvedPayappMetadata, mergePaymentMetadata, payappPaymentMetadata } from './payment-metadata.js';
 
 @Injectable()
 export class PaymentService {
@@ -495,6 +496,10 @@ export class PaymentService {
         null;
       tx.status = PaymentTransactionStatus.PAID;
       tx.paidAt = new Date();
+      tx.actualPaymentMethod = {
+        type: 'CARD',
+        ...(paymentMethod.cardName?.trim() && { cardName: paymentMethod.cardName.trim().slice(0, 80) }),
+      };
       return await this.txRepo.save(tx);
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
@@ -890,11 +895,10 @@ export class PaymentService {
   // ── PayApp 웹훅 처리 ──────────────────────────────────────────────────────
   // 페이앱이 결제/취소 상태 변경 시 호출. mul_no + var1(orderId) 기반으로 트랜잭션 동기화.
   async handlePayappWebhook(body: Record<string, any>) {
-    this.logger.log(`[PayApp Webhook] received: ${JSON.stringify(body)}`);
-
     const mulNo = body.mul_no as string | undefined;
     const orderId = body.var1 as string | undefined;
     const payState = body.pay_state as string | undefined;
+    this.logger.log(`[PayApp Webhook] received: mul_no=${mulNo} pay_state=${payState}`);
 
     if (!mulNo || !payState) {
       this.logger.warn('[PayApp Webhook] mul_no 또는 pay_state 누락');
@@ -911,7 +915,17 @@ export class PaymentService {
 
     // 멱등성: 동일 pay_state 이미 처리된 경우 skip
     const webhookLog = (tx.rawResponse?.webhooks as any[]) || [];
+    const previousMetadata = tx.actualPaymentMethod;
+    tx.actualPaymentMethod = mergePaymentMetadata(tx.actualPaymentMethod,
+      approvedPayappMetadata(tx.rawResponse, tx.mulNo));
+    if (payState === '4' && (!tx.mulNo || String(tx.mulNo) === String(mulNo)) && (!orderId || tx.orderId === orderId)) {
+      tx.actualPaymentMethod = mergePaymentMetadata(tx.actualPaymentMethod, payappPaymentMetadata(body));
+    }
     if (webhookLog.some((w) => w.pay_state === payState)) {
+      // Repeated approvals can fill old/missing metadata without repeating state or refund changes.
+      if (JSON.stringify(previousMetadata ?? null) !== JSON.stringify(tx.actualPaymentMethod)) {
+        await this.txRepo.update(tx.id, { actualPaymentMethod: tx.actualPaymentMethod });
+      }
       this.logger.log(`[PayApp Webhook] duplicate pay_state=${payState}, skip`);
       return { ok: true, skipped: true };
     }
