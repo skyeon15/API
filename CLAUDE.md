@@ -21,6 +21,7 @@
 - 엔드포인트: `GET /auth/authorize`(미로그인 시 web `/login`으로 리다이렉트) → `POST /auth/token`(code 교환, `client_secret` 필수, **redirect_uri 불일치 시 거부**) → `GET /auth/userinfo`. `id_token` 발급, scope별 클레임(profile/email/phone/address). **토큰 응답은 표준 snake_case가 아닌 camelCase**(`accessToken` 등) — 기성 OAuth 라이브러리 미호환
 - Swagger(`/docs`)에는 **SSO 4개**(authorize/token/userinfo/client/:clientId, 태그 '통합 로그인(SSO)')만 노출. 자체 로그인(소셜/세션)은 `@ApiExcludeEndpoint`로 개별 제외
 - 클라이언트 = `oauth_clients` 테이블: `redirectUris`, `allowedScopes`, 로그인 UI 브랜딩(`logoUrl`/`primaryColor`/`themeConfig`), `autoGrant`(내부 서비스 동의 생략). 사용자별 동의 이력은 `oauth_grants`
+- 서비스 회원 조회: `GET /sso/members`는 서버의 `Authorization: Basic base64(clientId:clientSecret)`로 자기 서비스의 ACTIVE 동의 계정만 조회한다. 이름·전화·이메일 검색, 최신 홈페이지 최초 로그인 순, 페이지당 최대 100명. 연락처와 검색은 계정별 동의 scope를 따르며 계정 생성일과 서비스 최초 로그인일을 구분한다. 관리자 UI를 가진 서비스는 자체 관리자 인증을 먼저 확인해야 한다. 응답은 `private, no-store`, Swagger에는 노출하지 않는다. 검증: `node scripts/verify-sso-members.mjs`.
 - 클라이언트 관리: 관리 콘솔 `/manage`의 SSO 섹션(**ADMIN role 전용**, `user.roles` 기준) ↔ API `/auth/clients` CRUD+시크릿 재발급(`sso-admin.controller.ts`, `ApiKeyOrSessionGuard`+`RolesGuard`, 문서 미노출). AdminJS(`/skyeon15`)에서도 가능하나 자동 발급 훅은 API 쪽에만 있음
 - 로그인 수단: **소셜(카카오/네이버/구글, `user_social_accounts`)뿐이다.** 세션은 refresh token(`refresh_tokens`) + 쿠키. 전화 인증코드 로그인은 제거했다(아래) — 따라서 **가입 경로도 소셜 3종뿐이고, 소셜 계정을 잃으면 복구 경로가 없다.** 이메일 코드 로그인을 붙이는 것이 다음 과제
 - **미구현**: `.well-known/openid-configuration`(discovery), PKCE — 클라이언트는 secret 보관 가능한 confidential(백엔드)이어야 함

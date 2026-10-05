@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
 import { SsoAdminController } from './sso-admin.controller.js';
+import { SsoMembersController } from './sso-members.controller.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
 import { User } from '../users/entities/user.entity.js';
 import { ApiKey } from '../admin/entities/api-key.entity.js';
@@ -32,7 +33,7 @@ import { OauthClientAdmin } from './entities/oauth-client-admin.entity.js';
     }),
   ],
   providers: [AuthService, JwtAuthGuard],
-  controllers: [AuthController, SsoAdminController],
+  controllers: [AuthController, SsoAdminController, SsoMembersController],
   exports: [AuthService, JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}
