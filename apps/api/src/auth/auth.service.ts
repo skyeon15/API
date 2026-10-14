@@ -288,10 +288,9 @@ export class AuthService {
     provider: SocialProvider,
     providerUserId: string,
     profile: any,
-    currentUserId?: string,
   ): Promise<User> {
     console.log(
-      `[AUTH] findOrCreateSocialUser: provider=${provider}, providerUserId=${providerUserId}, currentUserId=${currentUserId}`,
+      `[AUTH] findOrCreateSocialUser: provider=${provider}, providerUserId=${providerUserId}`,
     );
     let socialAccount: UserSocialAccount | null = null;
     try {
@@ -306,16 +305,8 @@ export class AuthService {
 
     const rawData = profile.raw || profile;
 
-    // 이미 연동된 소셜 계정인 경우
+    // 로그인 대상은 인증된 소셜 계정으로만 결정한다. 기존 연결은 계속 사용할 수 있다.
     if (socialAccount) {
-      // 1. 로그인 중인 경우 (연동 시도)
-      if (currentUserId && socialAccount.userId !== currentUserId) {
-        throw new BadRequestException(
-          '이미 다른 계정에 연동된 소셜 계정입니다.',
-        );
-      }
-      // 2. 로그인 중이 아니거나, 본인 계정인 경우 (로그인 또는 연동 갱신)
-
       // 유저 정보 보강 (기존 유저 정보가 누락된 경우 소셜 정보로 채워줌)
       const user = socialAccount.user;
       let updated = false;
@@ -349,103 +340,34 @@ export class AuthService {
       return user;
     }
 
-    // 연동된 소셜 계정이 없는 경우
-
-    // 1. 로그인 중인 경우 (새로운 연동)
-    if (currentUserId) {
-      await this.socialAccountRepo.save(
-        this.socialAccountRepo.create({
-          userId: currentUserId,
-          provider,
-          providerUserId,
-          rawProfile: rawData,
-          syncedAt: new Date(),
-        }),
+    // 처음 인증한 소셜 계정은 새 사용자로 가입한다. 세션·이메일·CI로 자동 연결하지 않는다.
+    // 이메일/CI는 고유 필드이므로 충돌하면 기존 로그인 수단을 사용하도록 안내한다.
+    const existingIdentity: { ci?: string; email?: string }[] = [];
+    if (profile.ci) existingIdentity.push({ ci: profile.ci });
+    if (profile.email) existingIdentity.push({ email: profile.email });
+    if (
+      existingIdentity.length > 0 &&
+      (await this.userRepo.findOneBy(existingIdentity))
+    ) {
+      throw new BadRequestException(
+        '이미 가입된 정보입니다. 기존 로그인 수단을 사용해주세요.',
       );
-
-      // 이미 회원가입된 상태이므로 정보가 비어있다면 채워줌
-      const user = await this.getUserById(currentUserId);
-      let updated = false;
-      if (!user.name && profile.name) {
-        user.name = profile.name;
-        updated = true;
-      }
-      if (!user.nickname && profile.nickname) {
-        user.nickname = profile.nickname;
-        updated = true;
-      }
-      if (!user.phone && profile.phone) {
-        // 카카오·네이버가 주는 번호는 그쪽에서 본인확인이 끝난 번호다.
-        user.phone = profile.phone;
-        user.phoneVerified = true;
-        updated = true;
-      }
-      if (!user.gender && profile.gender) {
-        user.gender = profile.gender;
-        updated = true;
-      }
-      if (!user.birthDate && profile.birthDate) {
-        user.birthDate = profile.birthDate;
-        updated = true;
-      }
-      if (updated) await user.save();
-
-      return user;
     }
 
-    // 2. 로그인 중이 아닌 경우 (신규 가입 또는 자동 계정 통합)
-    // CI 또는 이메일로 기존 유저 확인 (계정 통합 로직)
-    let user: User | null = null;
-    if (profile.ci) {
-      user = await this.userRepo.findOneBy({ ci: profile.ci });
-    } else if (profile.email) {
-      user = await this.userRepo.findOneBy({ email: profile.email });
-    }
-
-    if (!user) {
-      user = await this.userRepo.save(
-        this.userRepo.create({
-          // 🔴 «사용자» 같은 가짜 이름을 넣지 않는다. name 은 NOT NULL 이라 빈 문자열을
-          //    쓰는데, 가입 완료 판정(isProfileComplete)이 공백을 «없음»으로 보므로
-          //    소셜에서 실명이 안 오면 가입 정보 입력 화면이 제대로 뜬다.
-          name: profile.name || '',
-          nickname: profile.nickname || null,
-          email: profile.email,
-          ci: profile.ci,
-          phone: profile.phone,
-          phoneVerified: Boolean(profile.phone),
-          gender: profile.gender,
-          birthDate: profile.birthDate,
-          profileImageUrl: profile.profileImageUrl,
-        }),
-      );
-    } else {
-      // 정보 업데이트 (기존 유저 정보 보강)
-      let updated = false;
-      if (!user.name && profile.name) {
-        user.name = profile.name;
-        updated = true;
-      }
-      if (!user.nickname && profile.nickname) {
-        user.nickname = profile.nickname;
-        updated = true;
-      }
-      if (!user.phone && profile.phone) {
-        // 카카오·네이버가 주는 번호는 그쪽에서 본인확인이 끝난 번호다.
-        user.phone = profile.phone;
-        user.phoneVerified = true;
-        updated = true;
-      }
-      if (!user.gender && profile.gender) {
-        user.gender = profile.gender;
-        updated = true;
-      }
-      if (!user.birthDate && profile.birthDate) {
-        user.birthDate = profile.birthDate;
-        updated = true;
-      }
-      if (updated) await user.save();
-    }
+    const user = await this.userRepo.save(
+      this.userRepo.create({
+        // 실명이 없으면 빈 값으로 두어 가입 정보 입력 화면에서 받는다.
+        name: profile.name || '',
+        nickname: profile.nickname || null,
+        email: profile.email,
+        ci: profile.ci,
+        phone: profile.phone,
+        phoneVerified: Boolean(profile.phone),
+        gender: profile.gender,
+        birthDate: profile.birthDate,
+        profileImageUrl: profile.profileImageUrl,
+      }),
+    );
 
     await this.socialAccountRepo.save(
       this.socialAccountRepo.create({

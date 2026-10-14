@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev -p 10150",
     "build": "next build",
+    "typecheck": "tsc --noEmit",
     "start": "next start -p 10150",
     "lint": "next lint"
   },
@@ -30,8 +31,8 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^20.0.0",
-    "@types/react": "^18.0.0",
-    "@types/react-dom": "^18.0.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
     "eslint": "^9.0.0",
     "eslint-config-next": "15.1.0",
     "postcss": "^8.0.0",

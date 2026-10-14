@@ -24,6 +24,7 @@
 - 서비스 회원 조회: `GET /sso/members`는 서버의 `Authorization: Basic base64(clientId:clientSecret)`로 자기 서비스의 ACTIVE 동의 계정만 조회한다. 이름·전화·이메일 검색, 최신 홈페이지 최초 로그인 순, 페이지당 최대 100명. 연락처와 검색은 계정별 동의 scope를 따르며 계정 생성일과 서비스 최초 로그인일을 구분한다. 관리자 UI를 가진 서비스는 자체 관리자 인증을 먼저 확인해야 한다. 응답은 `private, no-store`, Swagger에는 노출하지 않는다. 검증: `node scripts/verify-sso-members.mjs`.
 - 클라이언트 관리: 관리 콘솔 `/manage`의 SSO 섹션(**ADMIN role 전용**, `user.roles` 기준) ↔ API `/auth/clients` CRUD+시크릿 재발급(`sso-admin.controller.ts`, `ApiKeyOrSessionGuard`+`RolesGuard`, 문서 미노출). AdminJS(`/skyeon15`)에서도 가능하나 자동 발급 훅은 API 쪽에만 있음
 - 로그인 수단: **소셜(카카오/네이버/구글, `user_social_accounts`)뿐이다.** 세션은 refresh token(`refresh_tokens`) + 쿠키. 전화 인증코드 로그인은 제거했다(아래) — 따라서 **가입 경로도 소셜 3종뿐이고, 소셜 계정을 잃으면 복구 경로가 없다.** 이메일 코드 로그인을 붙이는 것이 다음 과제
+- 소셜 로그인은 인증된 `(provider, providerUserId)`로만 사용자를 찾는다. 기존 세션이나 이메일·CI 일치로 새 소셜 계정을 기존 사용자에게 연결하지 않는다. 이미 저장된 연결은 계속 로그인에 사용하며, 처음 인증한 소셜 계정은 신규 가입한다. 이메일·CI가 기존 사용자와 충돌하면 400으로 기존 로그인 수단 사용을 안내한다. 프로필에는 저장된 로그인 계정 조회·해제만 제공한다. 검증: `node scripts/verify-social-login.mjs`.
 - **미구현**: `.well-known/openid-configuration`(discovery), PKCE — 클라이언트는 secret 보관 가능한 confidential(백엔드)이어야 함
 
 #### 토큰 분리 — SSO 토큰은 세션이 아니다

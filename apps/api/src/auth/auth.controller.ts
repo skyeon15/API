@@ -326,14 +326,11 @@ export class AuthController {
     const callbackUrl = `${resolveApiBaseUrl(req)}/auth/kakao/callback`;
     const finalRedirect = state;
 
-    const currentUserId = this.optionalSessionUserId(req);
-
     const profile = await this.authService.getKakaoProfile(code, callbackUrl);
     const user = await this.authService.findOrCreateSocialUser(
       SocialProvider.KAKAO,
       profile.providerUserId,
       profile,
-      currentUserId,
     );
 
     const accessToken = this.jwtService.sign(
@@ -387,14 +384,11 @@ export class AuthController {
     @Req() req: any,
     @Res({ passthrough: true }) res: any,
   ) {
-    const currentUserId = this.optionalSessionUserId(req);
-
     const profile = await this.authService.getNaverProfile(code, state);
     const user = await this.authService.findOrCreateSocialUser(
       SocialProvider.NAVER,
       profile.providerUserId,
       profile,
-      currentUserId,
     );
 
     const accessToken = this.jwtService.sign(
@@ -445,14 +439,11 @@ export class AuthController {
     const finalRedirect = state;
     const callbackUrl = `${resolveApiBaseUrl(req)}/auth/google/callback`;
 
-    const currentUserId = this.optionalSessionUserId(req);
-
     const profile = await this.authService.getGoogleProfile(code, callbackUrl);
     const user = await this.authService.findOrCreateSocialUser(
       SocialProvider.GOOGLE,
       profile.providerUserId,
       profile,
-      currentUserId,
     );
 
     const accessToken = this.jwtService.sign(

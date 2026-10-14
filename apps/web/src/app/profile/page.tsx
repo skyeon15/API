@@ -164,13 +164,6 @@ export default function ProfilePage() {
     }
   };
 
-  const handleLinkSocial = (provider: string) => {
-    // API 서버의 소셜 로그인 엔드포인트로 리다이렉트
-    // 로그인 완료 후 다시 /profile로 돌아오도록 redirect 쿼리 추가
-    const authUrl = `${API_BASE}/auth/${provider}?redirect=${encodeURIComponent(window.location.origin + '/profile')}`;
-    window.location.href = authUrl;
-  };
-
   const handleUnlinkSocial = async (provider: string) => {
     if (!confirm(`${provider} 연동을 해제하시겠습니까?`)) return;
     try {
@@ -432,21 +425,16 @@ export default function ProfilePage() {
               <CardDescription>로그인에 사용하는 계정들입니다.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {['kakao', 'naver', 'google'].map(provider => {
-                const isLinked = socialAccounts.find(s => s.provider === provider);
+              {Array.from(new Set(socialAccounts.map(account => account.provider))).map(provider => {
                 return (
                   <div key={provider} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${isLinked ? 'bg-primary text-white' : 'bg-muted'}`}>
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold bg-primary text-white">
                         {provider[0].toUpperCase()}
                       </div>
                       <span className="text-sm capitalize font-medium">{provider}</span>
                     </div>
-                    {isLinked ? (
-                      <Button variant="ghost" size="sm" className="text-xs text-destructive" onClick={() => handleUnlinkSocial(provider)}>해제</Button>
-                    ) : (
-                      <Button variant="outline" size="sm" className="text-xs" onClick={() => handleLinkSocial(provider)}>연결</Button>
-                    )}
+                    <Button variant="ghost" size="sm" className="text-xs text-destructive" onClick={() => handleUnlinkSocial(provider)}>해제</Button>
                   </div>
                 );
               })}

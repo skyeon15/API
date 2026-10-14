@@ -9,7 +9,6 @@ const API_PROXY_TARGET = process.env.API_PROXY_TARGET || 'http://localhost:10151
 const nextConfig: NextConfig = {
   output: 'standalone',
   eslint: { ignoreDuringBuilds: true },
-  typescript: { ignoreBuildErrors: true },
   async rewrites() {
     return [
       {
