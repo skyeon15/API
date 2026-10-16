@@ -87,7 +87,7 @@ export class SsoAdminController {
   }
 
   // --- 서비스별 관리자 ---
-  // 지정은 플랫폼 ADMIN 만 할 수 있다(이 컨트롤러 전체가 @Roles(ADMIN)).
+  // 이 관리 콘솔 경로는 플랫폼 ADMIN 만 쓸 수 있다(컨트롤러 전체가 @Roles(ADMIN)).
   // 연동 서비스는 `GET /auth/userinfo` 의 `isServiceAdmin` 으로 자기 관리자를 판별한다.
 
   @Get(':id/admins')
