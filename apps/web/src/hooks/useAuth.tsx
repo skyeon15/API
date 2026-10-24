@@ -14,6 +14,7 @@ interface User {
   nickname?: string;
   profileImageUrl?: string;
   email?: string;
+  loginEmail?: string | null;
   phone: string;
   /** 문자 인증으로 확인된 번호인지 (해외 번호는 인증 없이 등록되므로 false) */
   phoneVerified?: boolean;

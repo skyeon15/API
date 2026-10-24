@@ -40,15 +40,7 @@ import {
   type AccessTokenPayload,
 } from '../common/utils/session-token.util.js';
 import { resolveApiBaseUrl } from '../common/utils/request-url.util.js';
-
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure:
-    process.env.API_NODE_ENV === 'production' ||
-    process.env.NODE_ENV === 'production',
-  sameSite: 'lax' as const,
-  path: '/',
-};
+import { COOKIE_OPTIONS, setSessionCookies } from './session-cookie.util.js';
 
 
 // SSO(OAuth2) 엔드포인트 4개만 문서에 노출한다.
@@ -472,16 +464,7 @@ export class AuthController {
     const token = req.cookies?.refresh_token;
     if (!token) throw new UnauthorizedException('리프레시 토큰이 없습니다.');
 
-    const { accessToken, refreshToken } = await this.authService.refresh(token);
-
-    res.cookie('access_token', accessToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 15 * 60 * 1000,
-    });
-    res.cookie('refresh_token', refreshToken, {
-      ...COOKIE_OPTIONS,
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    setSessionCookies(res, await this.authService.refresh(token));
 
     return { message: '토큰이 갱신되었습니다.' };
   }

@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '../../hooks/useAuth';
 import { CONFIG } from '@/lib/constants';
+import { EmailCodeForm } from '@/components/email-code-form';
 import { isProfileComplete } from '@/lib/profile';
 import { resolvePostAuthDestination } from '@/lib/auth-redirect';
 import { Button } from '@/components/ui/button';
@@ -21,7 +22,7 @@ interface ClientInfo {
 function LoginForm() {
   const [clientInfo, setClientInfo] = useState<ClientInfo | null>(null);
 
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, refresh } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -91,11 +92,14 @@ function LoginForm() {
             {clientInfo ? `${clientInfo.clientName} 로그인` : '로그인'}
           </CardTitle>
           <CardDescription>
-            {clientInfo ? '계정으로 계속하려면 로그인하세요' : '소셜 계정으로 시작하세요'}
+            {clientInfo ? '계정으로 계속하려면 로그인하세요' : '이메일 또는 소셜 계정으로 시작하세요'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {/* 소셜 로그인 — 유일한 로그인 수단이다 */}
+          <EmailCodeForm onSuccess={refresh} />
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="h-px flex-1 bg-border" />또는 소셜 계정으로 로그인<div className="h-px flex-1 bg-border" />
+          </div>
           <div className="grid grid-cols-1 gap-2">
             <Button
               variant="outline"

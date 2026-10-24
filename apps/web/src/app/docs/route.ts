@@ -4,7 +4,7 @@ export function GET() {
   const html = `<!DOCTYPE html>
 <html>
   <head>
-    <title>파란대나무숲 API 문서</title>
+    <title>파란대나무숲 문서</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />

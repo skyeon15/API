@@ -97,7 +97,7 @@ async function bootstrap() {
 
   // Swagger 설정 시작
   const builder = new DocumentBuilder()
-    .setTitle('파란대나무숲 API')
+    .setTitle('파란대나무숲')
     .setDescription(
       '파란대나무숲에서 제공하는 다양한 API 서비스의 기술 문서예요!',
     )
@@ -153,7 +153,7 @@ async function bootstrap() {
       url: './docs/openapi.json',
       persistAuthorization: true,
     },
-    customSiteTitle: '파란대나무숲 API 문서',
+    customSiteTitle: '파란대나무숲 문서',
   });
 
   // Swagger 설정 끝

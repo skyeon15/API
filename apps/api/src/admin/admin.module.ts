@@ -365,7 +365,7 @@ const Components = {
               },
             ],
             branding: {
-              companyName: '파란대나무숲 API 포털 숲지기',
+              companyName: '파란대나무숲 포털 숲지기',
               logo: '/public/logo.png',
               favicon: '/public/favicon.svg',
             },

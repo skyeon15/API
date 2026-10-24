@@ -11,7 +11,7 @@ import { randomBytes } from 'crypto';
 import { Redis } from 'ioredis';
 import axios from 'axios';
 import * as qs from 'querystring';
-import { User } from '../users/entities/user.entity.js';
+import { User, UserStatus } from '../users/entities/user.entity.js';
 import { RefreshToken } from './entities/refresh-token.entity.js';
 import {
   UserSocialAccount,
@@ -426,13 +426,19 @@ export class AuthService {
   }
 
   async unlinkSocialAccount(userId: string, provider: SocialProvider) {
-    const accounts = await this.socialAccountRepo.find({ where: { userId } });
-    if (accounts.length <= 1) {
-      throw new BadRequestException(
-        '최소 하나 이상의 로그인 수단이 필요합니다.',
-      );
-    }
-    await this.socialAccountRepo.delete({ userId, provider });
+    await this.userRepo.manager.transaction(async (manager) => {
+      // Serialize both kinds of unlink so concurrent requests cannot remove the last credential.
+      const user = await manager.findOne(User, {
+        where: { id: userId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) throw new UnauthorizedException();
+      const accounts = await manager.find(UserSocialAccount, { where: { userId } });
+      if (!accounts.some((account) => account.provider === provider)) return;
+      if (accounts.length <= 1 && !user.loginEmail) {
+        throw new BadRequestException('최소 하나 이상의 로그인 수단이 필요합니다.');
+      }
+      await manager.delete(UserSocialAccount, { userId, provider });
+    });
   }
 
   async getGrants(userId: string) {
@@ -595,9 +601,26 @@ export class AuthService {
     }
   }
 
-  async refresh(
-    token: string,
-  ): Promise<{ accessToken: string; refreshToken: string }> {
+  async createEmailSession(userId: string, verifiedEmail: string) {
+    return this.userRepo.manager.transaction(async (manager) => {
+      const user = await manager.findOne(User, {
+        where: { id: userId }, lock: { mode: 'pessimistic_write' },
+      });
+      if (!user || user.status !== UserStatus.ACTIVE || user.loginEmail !== verifiedEmail) {
+        throw new UnauthorizedException('로그인할 수 없는 계정입니다.');
+      }
+      const sessionExpiresAt = new Date(Date.now() + 60 * 60 * 1000);
+      return {
+        accessToken: this.issueAccessToken(userId),
+        refreshToken: await this.issueRefreshToken(
+          userId, undefined, sessionExpiresAt, manager.getRepository(RefreshToken),
+        ),
+        temporary: true,
+      };
+    });
+  }
+
+  async refresh(token: string) {
     const record = await this.refreshTokenRepo.findOne({
       where: { token, expiresAt: MoreThan(new Date()) },
     });
@@ -613,12 +636,39 @@ export class AuthService {
       );
     }
 
+    const sessionExpiresAt = record.sessionExpiresAt;
+    if (sessionExpiresAt) {
+      // Share the user lock with email changes/unlink: a refresh must not recreate a
+      // revoked token after those transactions have finished deleting sessions.
+      return this.userRepo.manager.transaction(async (manager) => {
+        const user = await manager.findOne(User, {
+          where: { id: record.userId }, lock: { mode: 'pessimistic_write' },
+        });
+        if (!user || sessionExpiresAt.getTime() <= Date.now() || !user.loginEmail ||
+          user.status !== UserStatus.ACTIVE) {
+          throw new UnauthorizedException('로그인이 만료되었습니다. 다시 로그인해주세요.');
+        }
+        const tokens = manager.getRepository(RefreshToken);
+        const consumed = await tokens.delete({
+          id: record.id, token, expiresAt: MoreThan(new Date()),
+        });
+        if (consumed.affected !== 1) throw new UnauthorizedException('이미 사용한 리프레시 토큰입니다.');
+        return {
+          accessToken: this.issueAccessToken(record.userId, undefined, sessionExpiresAt),
+          refreshToken: await this.issueRefreshToken(record.userId, undefined, sessionExpiresAt, tokens),
+          temporary: true,
+        };
+      });
+    }
+
     // Rotate: 기존 토큰 삭제 후 새로 발급
-    await this.refreshTokenRepo.remove(record);
+    const consumed = await this.refreshTokenRepo.delete({ id: record.id, token });
+    if (consumed.affected !== 1) throw new UnauthorizedException('이미 사용한 리프레시 토큰입니다.');
 
     return {
-      accessToken: this.issueAccessToken(record.userId),
-      refreshToken: await this.issueRefreshToken(record.userId),
+      accessToken: this.issueAccessToken(record.userId, undefined, sessionExpiresAt),
+      refreshToken: await this.issueRefreshToken(record.userId, undefined, sessionExpiresAt),
+      temporary: Boolean(sessionExpiresAt),
     };
   }
 
@@ -692,6 +742,7 @@ export class AuthService {
     return {
       id: u.id,
       email: u.email,
+      loginEmail: u.loginEmail,
       name: u.name,
       nickname: u.nickname,
       profileImageUrl: u.profileImageUrl,
@@ -725,11 +776,16 @@ export class AuthService {
   private issueAccessToken(
     userId: string,
     sso?: { clientId: string; scope: string },
+    sessionExpiresAt?: Date | null,
   ): string {
     const payload = sso
       ? { sub: userId, typ: SSO_TOKEN_TYPE, aud: sso.clientId, scope: sso.scope }
       : { sub: userId };
-    return this.jwtService.sign(payload, { expiresIn: '15m' });
+    const expiresIn = sessionExpiresAt
+      ? Math.min(15 * 60, Math.floor((sessionExpiresAt.getTime() - Date.now()) / 1000))
+      : 15 * 60;
+    if (expiresIn <= 0) throw new UnauthorizedException('로그인이 만료되었습니다.');
+    return this.jwtService.sign(payload, { expiresIn });
   }
 
   /**
@@ -740,15 +796,18 @@ export class AuthService {
   private async issueRefreshToken(
     userId: string,
     clientId?: string,
+    sessionExpiresAt?: Date | null,
+    repository = this.refreshTokenRepo,
   ): Promise<string> {
     const token = randomBytes(40).toString('hex');
-    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-    await this.refreshTokenRepo.save(
-      this.refreshTokenRepo.create({
+    const expiresAt = sessionExpiresAt ?? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await repository.save(
+      repository.create({
         token,
         userId,
         expiresAt,
         clientId: clientId ?? null,
+        sessionExpiresAt: sessionExpiresAt ?? null,
       }),
     );
     return token;

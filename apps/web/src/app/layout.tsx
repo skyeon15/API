@@ -14,8 +14,17 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "파란대나무숲 API",
-  description: "파란대나무숲 API 관리 포털",
+  title: "파란대나무숲",
+  description: "파란대나무숲 관리 포털",
+  openGraph: {
+    title: "파란대나무숲",
+    description: "파란대나무숲 관리 포털",
+    siteName: "파란대나무숲",
+  },
+  twitter: {
+    title: "파란대나무숲",
+    description: "파란대나무숲 관리 포털",
+  },
 };
 
 export default function RootLayout({

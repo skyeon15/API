@@ -23,7 +23,7 @@
 - 클라이언트 = `oauth_clients` 테이블: `redirectUris`, `allowedScopes`, 로그인 UI 브랜딩(`logoUrl`/`primaryColor`/`themeConfig`), `autoGrant`(내부 서비스 동의 생략). 사용자별 동의 이력은 `oauth_grants`
 - 서비스 회원 조회: `GET /sso/members`는 서버의 `Authorization: Basic base64(clientId:clientSecret)`로 자기 서비스의 ACTIVE 동의 계정만 조회한다. 이름·전화·이메일 검색, 최신 홈페이지 최초 로그인 순, 페이지당 최대 100명. `GET /sso/members/:id`는 같은 인증·동의 조건으로 회원 기본정보, 닉네임·생년월일, 전화번호 확인 여부, 계정 주소를 조회한다. 다른 서비스 회원과 철회한 동의는 404이며 CI·결제 고객 ID·수령 비밀키 등은 반환하지 않는다. 연락처와 검색은 계정별 동의 scope를 따르며 계정 생성일과 서비스 최초 로그인일을 구분한다. 관리자 UI를 가진 서비스는 자체 관리자 인증을 먼저 확인해야 한다. 응답은 `private, no-store`, Swagger에는 노출하지 않는다. 검증: `node scripts/verify-sso-members.mjs` (`MEMBERS_TEST_PGLITE`로 외부 PGlite 설치 경로 지정 가능).
 - 클라이언트 관리: 관리 콘솔 `/manage`의 SSO 섹션(**ADMIN role 전용**, `user.roles` 기준) ↔ API `/auth/clients` CRUD+시크릿 재발급(`sso-admin.controller.ts`, `ApiKeyOrSessionGuard`+`RolesGuard`, 문서 미노출). AdminJS(`/skyeon15`)에서도 가능하나 자동 발급 훅은 API 쪽에만 있음
-- 로그인 수단: **소셜(카카오/네이버/구글, `user_social_accounts`)뿐이다.** 세션은 refresh token(`refresh_tokens`) + 쿠키. 전화 인증코드 로그인은 제거했다(아래) — 따라서 **가입 경로도 소셜 3종뿐이고, 소셜 계정을 잃으면 복구 경로가 없다.** 이메일 코드 로그인을 붙이는 것이 다음 과제
+- 로그인 수단: 소셜 3종 + **Resend 이메일 일회용 코드**. 신규 이메일은 가입 가능하고, 기존 계정은 로그인 상태에서 이메일 소유를 인증해 연결한다. `users.loginEmail`은 수정 가능한 연락처 `email`과 별개이며 자동 연결/백필 금지. 프로필에서 연결·변경·해제 가능. 마지막 로그인 수단은 해제 불가. 이메일 세션은 `refresh_tokens.sessionExpiresAt`으로 1시간 절대 만료하며 쿠키는 세션 쿠키다. 코드 5분/5회/1회용, Redis Lua 원자 처리·장애 시 거부, HMAC 저장, 브라우저·용도·사용자 바인딩. `API_RESEND_API_KEY`, `API_RESEND_FROM`, `API_EMAIL_OTP_SECRET`은 Doppler에서 관리. 검증: `node scripts/verify-email-login.mjs` (격리 Docker PostgreSQL/Redis, 메일 대체 응답).
 - 소셜 로그인은 인증된 `(provider, providerUserId)`로만 사용자를 찾는다. 기존 세션이나 이메일·CI 일치로 새 소셜 계정을 기존 사용자에게 연결하지 않는다. 이미 저장된 연결은 계속 로그인에 사용하며, 처음 인증한 소셜 계정은 신규 가입한다. 이메일·CI가 기존 사용자와 충돌하면 400으로 기존 로그인 수단 사용을 안내한다. 프로필에는 저장된 로그인 계정 조회·해제만 제공한다. 검증: `node scripts/verify-social-login.mjs`.
 - **미구현**: `.well-known/openid-configuration`(discovery), PKCE — 클라이언트는 secret 보관 가능한 confidential(백엔드)이어야 함
 
@@ -68,7 +68,7 @@
 - **`phoneVerified`**: 번호의 주인이 확인됐는지. **카카오·네이버가 넘겨준 번호만 true**이고 직접 입력은 false다.
   구글은 번호를 주지 않는다. 알림톡 발송·결제 귀속처럼 «주인이 확인된 번호»가 필요한 곳은 `phone` 유무가 아니라
   **이 컬럼**을 봐야 한다 — 미확인 번호로 알림톡을 쏘면 남의 번호로 가고 채널 제재로 이어진다
-- `verification_codes` 테이블과 엔티티는 남겨 뒀다(쓰는 코드는 없음). 이메일 코드 로그인을 붙일 때 재사용할 것
+- `verification_codes` 테이블과 엔티티는 이전 전화 인증용으로 남아 있다. 이메일 코드는 이 테이블을 재사용하지 않고 Redis에 HMAC/시도 횟수/TTL로 저장한다.
 - 해외 문자인증을 SignalWire로 붙이는 안은 검토 후 보류했다(관리 부담 대비 실익 없음). 전화번호 강등으로 불필요해졌다
 
 ### 가입 필수/선택 항목

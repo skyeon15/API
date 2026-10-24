@@ -84,6 +84,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
         redact: {
           paths: [
             'req.body.password',
+            'req.body.code',
+            'req.body.challengeId',
             'req.body.token',
             'req.body.secret',
             'req.body.api_key',

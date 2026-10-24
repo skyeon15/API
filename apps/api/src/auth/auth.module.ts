@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { AuthService } from './auth.service.js';
 import { AuthController } from './auth.controller.js';
+import { EmailAuthController } from './email-auth.controller.js';
+import { EmailAuthService } from './email-auth.service.js';
 import { SsoAdminController } from './sso-admin.controller.js';
 import { SsoMembersController } from './sso-members.controller.js';
 import { JwtAuthGuard } from './jwt-auth.guard.js';
@@ -32,8 +34,8 @@ import { OauthClientAdmin } from './entities/oauth-client-admin.entity.js';
       }),
     }),
   ],
-  providers: [AuthService, JwtAuthGuard],
-  controllers: [AuthController, SsoAdminController, SsoMembersController],
+  providers: [AuthService, EmailAuthService, JwtAuthGuard],
+  controllers: [AuthController, EmailAuthController, SsoAdminController, SsoMembersController],
   exports: [AuthService, JwtModule, JwtAuthGuard],
 })
 export class AuthModule {}

@@ -3,7 +3,7 @@ export const metadata = {
 };
 
 const COMPANY = '파란대나무숲(주)';
-const SERVICE = '파란대나무숲 API 플랫폼';
+const SERVICE = '파란대나무숲 플랫폼';
 const EFFECTIVE_DATE = '2026년 5월 16일';
 
 export default function TermsPage() {

@@ -30,6 +30,10 @@ export class User extends BaseEntity {
   @Column({ nullable: true, unique: true })
   email: string;
 
+  // Verified login credential, independent of the editable contact email.
+  @Column({ type: 'varchar', length: 254, nullable: true, unique: true })
+  loginEmail: string | null;
+
   @Column()
   name: string;
 

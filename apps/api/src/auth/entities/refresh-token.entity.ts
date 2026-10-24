@@ -32,6 +32,10 @@ export class RefreshToken extends BaseEntity {
   @Column()
   expiresAt: Date;
 
+  // Absolute expiry for temporary email-login sessions; null for existing sessions.
+  @Column({ type: 'timestamptz', nullable: true })
+  sessionExpiresAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

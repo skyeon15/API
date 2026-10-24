@@ -77,7 +77,7 @@ export default function AlimtalkPage() {
       <header className="border-b bg-background">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <span className="font-semibold">파란대나무숲 API</span>
+            <span className="font-semibold">파란대나무숲</span>
             <nav className="flex gap-4 text-sm">
               <Link
                 href="/profile"

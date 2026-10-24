@@ -662,7 +662,7 @@ export default function ManagePage() {
       <header className="border-b bg-background sticky top-0 z-10">
         <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-6">
-            <span className="font-bold text-primary">파란대나무숲 API</span>
+            <span className="font-bold text-primary">파란대나무숲</span>
             <nav className="flex gap-4 text-sm">
               <Link href="/profile" className="text-muted-foreground hover:text-foreground">프로필</Link>
               <Link href="/manage" className="text-foreground font-medium">관리 콘솔</Link>
