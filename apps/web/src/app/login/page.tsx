@@ -92,14 +92,10 @@ function LoginForm() {
             {clientInfo ? `${clientInfo.clientName} 로그인` : '로그인'}
           </CardTitle>
           <CardDescription>
-            {clientInfo ? '계정으로 계속하려면 로그인하세요' : '이메일 또는 소셜 계정으로 시작하세요'}
+            {clientInfo ? '계정으로 계속하려면 로그인하세요' : '소셜 계정 또는 이메일로 시작하세요'}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <EmailCodeForm onSuccess={refresh} />
-          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-            <div className="h-px flex-1 bg-border" />또는 소셜 계정으로 로그인<div className="h-px flex-1 bg-border" />
-          </div>
           <div className="grid grid-cols-1 gap-2">
             <Button
               variant="outline"
@@ -123,6 +119,11 @@ function LoginForm() {
               Google로 시작하기
             </Button>
           </div>
+
+          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+            <div className="h-px flex-1 bg-border" />또는 이메일로 로그인<div className="h-px flex-1 bg-border" />
+          </div>
+          <EmailCodeForm onSuccess={refresh} />
 
           {/* 의면적 동의 고지 */}
           <p className="text-xs text-center text-muted-foreground leading-relaxed">

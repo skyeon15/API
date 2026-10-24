@@ -130,11 +130,11 @@ export function EmailCodeForm({ purpose = 'login', initialEmail = '', onSuccess 
         disabled={busy || (challenge ? code.length !== 6 || expiresIn === 0 : retryIn > 0)}>
         {busy ? '처리 중…' : challenge ? (purpose === 'link' ? '인증하고 연결하기' : '이메일로 로그인') : retryIn > 0 ? `${retryIn}초 후 다시 요청` : '인증코드 받기'}
       </Button>
-      <p className="text-xs text-muted-foreground leading-relaxed">
-        {purpose === 'login'
-          ? '휴대폰에서 메일을 확인하고 코드를 입력하세요. 처음 이용하는 이메일은 가입으로 이어집니다. 이메일 로그인은 1시간 뒤 만료되며, 공용 PC에서는 사용 후 로그아웃해주세요.'
-          : '인증한 이메일로 소셜 로그인 없이 로그인할 수 있습니다. 프로필의 연락처 이메일과 별도로 관리됩니다.'}
-      </p>
+      {purpose === 'link' && (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          인증한 이메일로 소셜 로그인 없이 로그인할 수 있습니다. 프로필의 연락처 이메일과 별도로 관리됩니다.
+        </p>
+      )}
     </form>
   );
 }
